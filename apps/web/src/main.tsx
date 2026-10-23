@@ -5,7 +5,7 @@ import './app.css';
 import { useRoute } from './lib/router';
 import { Capture } from './pages/Capture';
 import { Home } from './pages/Home';
-import { JobPage } from './pages/JobPage';
+import { JobPage, ReplayPage } from './pages/JobPage';
 import { Sandbox } from './pages/Sandbox';
 import { ScenePage } from './pages/ScenePage';
 
@@ -14,6 +14,8 @@ function App() {
   switch (route.page) {
     case 'job':
       return <JobPage key={route.id} id={route.id} />;
+    case 'replay':
+      return <ReplayPage key={route.id} id={route.id} />;
     case 'scene':
       return <ScenePage key={route.id} id={route.id} />;
     case 'capture':

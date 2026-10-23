@@ -4,13 +4,24 @@ import { frameScene } from '../components/SceneCanvas';
 import { Sparkline } from '../components/Sparkline';
 import { SplatViewer } from '../components/SplatViewer';
 import { api, formatSeconds, STAGES, type Stage } from '../lib/api';
-import { useJobStream, type JobStreamState } from '../lib/useJobStream';
+import { useJobReplay, useJobStream, type JobStreamState } from '../lib/useJobStream';
 import type { Viewer, ViewerStats } from '../viewer';
 
 type Showing = 'none' | 'sfm' | 'snapshot' | 'final';
 
 export function JobPage({ id }: { id: string }) {
   const s = useJobStream(id);
+  return <JobView id={id} s={s} />;
+}
+
+/** Plays back a finished run exactly as it streamed live (demo insurance against flaky Wi-Fi). */
+export function ReplayPage({ id }: { id: string }) {
+  const [run, setRun] = useState(0);
+  const s = useJobReplay(id, 75, run);
+  return <JobView key={run} id={id} s={s} replay onRestart={() => setRun((r) => r + 1)} />;
+}
+
+function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStreamState; replay?: boolean; onRestart?: () => void }) {
   const viewer = useRef<Viewer | null>(null);
   const [ready, setReady] = useState(false);
   const [showing, setShowing] = useState<Showing>('none');
@@ -112,19 +123,30 @@ export function JobPage({ id }: { id: string }) {
             <div className="job-title">
               <span className="job-name">{job.name}</span>
               <StatusPill status={job.status} />
+              {replay && <span className="pill">replay</span>}
             </div>
           )}
         </TopBar>
       </div>
 
       <aside className="side left panel">
-        <Timeline s={s} />
+        <Timeline s={s} replay={replay} />
         <Console s={s} />
         <div className="side-actions">
-          {running && (
+          {running && !replay && (
             <button className="btn small" onClick={() => void api.cancel(id)}>
               Cancel run
             </button>
+          )}
+          {replay && (
+            <button className="btn small" onClick={onRestart}>
+              Restart replay
+            </button>
+          )}
+          {!replay && job?.status === 'done' && (
+            <a className="btn small" href={`#/replay/${id}`}>
+              Replay training
+            </a>
           )}
           {job?.status === 'done' && (
             <>
@@ -196,7 +218,7 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function Timeline({ s }: { s: JobStreamState }) {
+function Timeline({ s, replay }: { s: JobStreamState; replay: boolean }) {
   const job = s.job;
   const order = STAGES.map((x) => x.key);
   const cur = job?.stage ? order.indexOf(job.stage) : job?.status === 'done' ? order.length : -1;
@@ -213,7 +235,7 @@ function Timeline({ s }: { s: JobStreamState }) {
               <div className="tl-head">
                 <span className="tl-label">{st.label}</span>
                 <span className="mono faint">
-                  {secs != null ? formatSeconds(secs) : state === 'active' ? <Elapsed since={job?.timings[st.key]?.start} /> : ''}
+                  {secs != null ? formatSeconds(secs) : state === 'active' && !replay ? <Elapsed since={job?.timings[st.key]?.start} /> : ''}
                 </span>
               </div>
               <div className="tl-detail faint">{state === 'active' ? (s.stageMsg[st.key] ?? st.detail) : st.detail}</div>

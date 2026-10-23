@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 export type Route =
   | { page: 'home' }
   | { page: 'job'; id: string }
+  | { page: 'replay'; id: string }
   | { page: 'scene'; id: string }
   | { page: 'capture' }
   | { page: 'sandbox' };
@@ -12,6 +13,7 @@ function parse(): Route {
   const h = location.hash.replace(/^#\/?/, '');
   const [page, id] = h.split('/');
   if (page === 'job' && id) return { page: 'job', id };
+  if (page === 'replay' && id) return { page: 'replay', id };
   if (page === 'scene' && id) return { page: 'scene', id };
   if (page === 'sandbox') return { page: 'sandbox' };
   return { page: 'home' };

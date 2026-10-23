@@ -140,6 +140,14 @@ export function ScenePage({ id }: { id: string }) {
               Download .ply
             </a>
           )}
+          <button
+            className="btn small ghost"
+            onClick={() => {
+              if (scene && confirm(`Delete “${scene.name}” permanently?`)) void api.remove(scene.id).then(() => location.assign('/#/'));
+            }}
+          >
+            Delete
+          </button>
           {!info && (
             <button className="btn small" onClick={() => setInfo(true)}>
               Details

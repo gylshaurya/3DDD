@@ -33,12 +33,12 @@ image = (
 # max_containers=1 + timeout are part of the budget guard: one GPU at a time, never runaway.
 
 
-@app.function(image=image, gpu="L4", timeout=25 * 60, max_containers=1)
+@app.function(image=image, gpu="L4", timeout=25 * 60, max_containers=1, scaledown_window=10)
 def train(payload: dict, cfg: dict):
     yield from _train(payload, cfg)
 
 
-@app.function(image=image, gpu="L4", timeout=5 * 60, max_containers=1, retries=0)
+@app.function(image=image, gpu="L4", timeout=5 * 60, max_containers=1, retries=0, scaledown_window=10)
 def smoke() -> dict:
     """Cheap check that CUDA + gsplat kernels work (a 4-Gaussian render)."""
     import torch

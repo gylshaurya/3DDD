@@ -21,6 +21,7 @@ from .jobs import JobManager
 MAX_UPLOAD_BYTES = 1_500_000_000
 SAMPLE_VIDEOS = DATA_DIR / "test-videos"
 WEB_DIST = REPO_ROOT / "apps" / "web" / "dist"
+WEB_PUBLIC = REPO_ROOT / "apps" / "web" / "public"
 
 manager: JobManager
 
@@ -191,7 +192,9 @@ if WEB_DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        f = WEB_DIST / path
-        if path and f.is_file() and WEB_DIST in f.resolve().parents:
-            return FileResponse(f)
+        # Built assets first, then public/ (favicon, dev sample scenes), else the SPA shell.
+        for root in (WEB_DIST, WEB_PUBLIC):
+            f = (root / path).resolve()
+            if path and f.is_file() and root.resolve() in f.parents:
+                return FileResponse(f)
         return FileResponse(WEB_DIST / "index.html")

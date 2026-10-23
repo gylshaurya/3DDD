@@ -3,7 +3,7 @@ import { chromium } from '@playwright/test';
 const [url, w = '1280', h = '800', js = ''] = process.argv.slice(2);
 const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-webgpu', '--use-angle=metal'] });
 const page = await browser.newPage({ viewport: { width: +w, height: +h } });
-await page.goto(`http://localhost:5199/viewer-test.html?orbit=1&url=${encodeURIComponent(url)}`);
+await page.goto(`http://localhost:${process.env.PORT ?? 5280}/viewer-test.html?orbit=1&url=${encodeURIComponent(url)}`);
 await page.waitForFunction(() => window.__splat && (window.__splat.loaded || window.__splat.error), null, { timeout: 120000 });
 if (js) await page.evaluate(js);
 await page.waitForTimeout(1500);

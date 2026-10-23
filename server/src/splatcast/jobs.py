@@ -26,7 +26,7 @@ from .poses import solve_poses
 from .sceneinfo import ply_to_splat, scene_info, sfm_preview_splat, spc_to_ply
 
 STAGES = ["frames", "sfm", "train", "export"]
-SNAPSHOTS_KEPT = 4
+SNAPSHOTS_KEPT = 400  # keep the whole run so it can be replayed later (~6 MB each)
 CONTACT_SHEET = 24
 
 

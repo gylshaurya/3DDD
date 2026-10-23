@@ -86,6 +86,8 @@ def extract_frames(
 ) -> list[Path]:
     progress = progress or (lambda f, m: None)
     info = probe(video)
+    if info.duration and info.duration < 5:
+        raise RuntimeError(f"Video is only {info.duration:.1f} s long; record at least 10 s while circling the subject")
     out_dir.mkdir(parents=True, exist_ok=True)
     cand_dir = out_dir.parent / (out_dir.name + "_candidates")
     shutil.rmtree(cand_dir, ignore_errors=True)

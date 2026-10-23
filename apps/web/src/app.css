@@ -793,3 +793,28 @@
     grid-template-columns: repeat(4, 1fr);
   }
 }
+
+/* keep long mono lines and controls from forcing horizontal scroll on phones */
+.hero-content > * {
+  min-width: 0;
+}
+.hero-copy .eyebrow {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .hero-copy h1 {
+    font-size: clamp(32px, 10vw, 44px);
+  }
+  .lede {
+    font-size: 15.5px;
+  }
+  .opt-row {
+    flex-wrap: wrap;
+  }
+  .hero-caption {
+    display: none;
+  }
+  .phone {
+    display: none;
+  }
+}

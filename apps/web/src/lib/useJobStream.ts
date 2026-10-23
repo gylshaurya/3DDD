@@ -123,3 +123,46 @@ export function useJobStream(jobId: string | null): JobStreamState {
 
   return state;
 }
+
+/**
+ * Re-plays a finished run from its recorded event log, time-compressed to roughly `seconds`.
+ * Dead air (long gaps such as the camera solve) is capped so the story keeps moving.
+ */
+export function useJobReplay(jobId: string, seconds = 60, run = 0): JobStreamState {
+  const [state, dispatch] = useReducer(reduce, initial);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    dispatch({ kind: 'reset' });
+    fetch(`/files/jobs/${jobId}/events.jsonl`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('No recording for this run'))))
+      .then((text) => {
+        const events = text
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l) as JobEvent);
+        if (!events.length || cancelled) return;
+        const span = events[events.length - 1].t - events[0].t;
+        const speed = Math.max(1, span / seconds);
+        dispatch({ kind: 'event', ev: { type: 'replay_done' } });
+        let i = 0;
+        const step = () => {
+          if (cancelled) return;
+          dispatch({ kind: 'event', ev: events[i] });
+          i++;
+          if (i >= events.length) return;
+          const gap = (events[i].t - events[i - 1].t) / speed;
+          timer = setTimeout(step, Math.min(gap, 1.2) * 1000);
+        };
+        step();
+      })
+      .catch(() => dispatch({ kind: 'lost' }));
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [jobId, seconds, run]);
+
+  return state;
+}
