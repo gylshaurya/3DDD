@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   let viewer: Viewer;
   try {
     viewer = await createViewer(canvas, {
-      up: (params.get('up') as UpAxis) ?? 'y-down',
+      up: (params.get('up') as UpAxis) ?? 'auto',
       autoOrbit: params.get('orbit') === '1',
       forceCpuSort: params.get('cpu') === '1',
       onError: (e) => { window.__splat.error = e.message; },

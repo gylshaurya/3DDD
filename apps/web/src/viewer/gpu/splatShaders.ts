@@ -21,6 +21,49 @@ struct Uniforms {
 `;
 
 /**
+ * Generates an SH evaluator that loads each packed f16 pair exactly once with constant indices
+ * (dynamic per-half indexing was ~10 ms/frame for 1M SH3 splats on an M4).
+ * Coefficients are coefficient-major f16 triples: half h = k*3 + channel.
+ */
+function shEvalWGSL(): string {
+  const words = (from: number, to: number) => {
+    let out = '';
+    for (let w = from; w <= to; w++) out += `    let p${w} = unpack2x16float(sh[base + ${w}u]);\n`;
+    return out;
+  };
+  const half = (h: number) => `p${h >> 1}.${h & 1 ? 'y' : 'x'}`;
+  const coef = (k: number) => `vec3<f32>(${half(k * 3)}, ${half(k * 3 + 1)}, ${half(k * 3 + 2)})`;
+  return /* wgsl */ `
+fn evalSH(i: u32, dir: vec3<f32>) -> vec3<f32> {
+  let base = i * u.shStride;
+  let x = dir.x; let y = dir.y; let z = dir.z;
+${words(0, 4)}
+  var c = -SH_C1 * y * ${coef(0)} + SH_C1 * z * ${coef(1)} - SH_C1 * x * ${coef(2)};
+  if (u.shDegree > 1u) {
+${words(5, 11)}
+    let xx = x * x; let yy = y * y; let zz = z * z;
+    let xy = x * y; let yz = y * z; let xz = x * z;
+    c += SH_C2[0] * xy * ${coef(3)}
+       + SH_C2[1] * yz * ${coef(4)}
+       + SH_C2[2] * (2.0 * zz - xx - yy) * ${coef(5)}
+       + SH_C2[3] * xz * ${coef(6)}
+       + SH_C2[4] * (xx - yy) * ${coef(7)};
+    if (u.shDegree > 2u) {
+${words(12, 22)}
+      c += SH_C3[0] * y * (3.0 * xx - yy) * ${coef(8)}
+         + SH_C3[1] * xy * z * ${coef(9)}
+         + SH_C3[2] * y * (4.0 * zz - xx - yy) * ${coef(10)}
+         + SH_C3[3] * z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * ${coef(11)}
+         + SH_C3[4] * x * (4.0 * zz - xx - yy) * ${coef(12)}
+         + SH_C3[5] * z * (xx - yy) * ${coef(13)}
+         + SH_C3[6] * x * (xx - 3.0 * yy) * ${coef(14)};
+    }
+  }
+  return c;
+}`;
+}
+
+/**
  * Projects every splat: frustum cull, EWA covariance projection, view-dependent SH color,
  * then appends survivors (atomic compaction) with an inverted-depth sort key so an
  * ascending sort yields back-to-front order.
@@ -45,39 +88,7 @@ const SH_C1: f32 = 0.4886025119029199;
 const SH_C2 = array<f32, 5>(1.0925484305920792, -1.0925484305920792, 0.31539156525252005, -1.0925484305920792, 0.5462742152960396);
 const SH_C3 = array<f32, 7>(-0.5900435899266435, 2.890611442640554, -0.4570457994644658, 0.3731763325901154, -0.4570457994644658, 1.445305721320277, -0.5900435899266435);
 
-fn shHalf(base: u32, h: u32) -> f32 {
-  let w = unpack2x16float(sh[base + (h >> 1u)]);
-  return select(w.x, w.y, (h & 1u) == 1u);
-}
-
-fn shCoef(base: u32, k: u32) -> vec3<f32> {
-  return vec3<f32>(shHalf(base, k * 3u), shHalf(base, k * 3u + 1u), shHalf(base, k * 3u + 2u));
-}
-
-fn evalSH(i: u32, dir: vec3<f32>) -> vec3<f32> {
-  let base = i * u.shStride;
-  let x = dir.x; let y = dir.y; let z = dir.z;
-  var c = -SH_C1 * y * shCoef(base, 0u) + SH_C1 * z * shCoef(base, 1u) - SH_C1 * x * shCoef(base, 2u);
-  if (u.shDegree > 1u) {
-    let xx = x * x; let yy = y * y; let zz = z * z;
-    let xy = x * y; let yz = y * z; let xz = x * z;
-    c += SH_C2[0] * xy * shCoef(base, 3u)
-       + SH_C2[1] * yz * shCoef(base, 4u)
-       + SH_C2[2] * (2.0 * zz - xx - yy) * shCoef(base, 5u)
-       + SH_C2[3] * xz * shCoef(base, 6u)
-       + SH_C2[4] * (xx - yy) * shCoef(base, 7u);
-    if (u.shDegree > 2u) {
-      c += SH_C3[0] * y * (3.0 * xx - yy) * shCoef(base, 8u)
-         + SH_C3[1] * xy * z * shCoef(base, 9u)
-         + SH_C3[2] * y * (4.0 * zz - xx - yy) * shCoef(base, 10u)
-         + SH_C3[3] * z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * shCoef(base, 11u)
-         + SH_C3[4] * x * (4.0 * zz - xx - yy) * shCoef(base, 12u)
-         + SH_C3[5] * z * (xx - yy) * shCoef(base, 13u)
-         + SH_C3[6] * x * (xx - 3.0 * yy) * shCoef(base, 14u);
-    }
-  }
-  return c;
-}
+${shEvalWGSL()}
 
 fn writeInvisible(i: u32) {
   // fallback (non-compact) mode needs every slot defined

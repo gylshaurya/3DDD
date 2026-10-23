@@ -1,4 +1,4 @@
-import { computeBounds, type SceneBounds } from './bounds';
+import { computeBounds, estimateUp, type SceneBounds } from './bounds';
 import { CameraControls, OrbitCamera, type UpAxis } from './camera';
 import type { CpuSortRequest, CpuSortResult } from './cpuSort.worker';
 import CpuSortWorker from './cpuSort.worker?worker';
@@ -11,7 +11,7 @@ import LoaderWorker from './loader.worker?worker';
 import type { Vec3 } from './math';
 
 export interface ViewerOptions {
-  /** World up axis of the scene. 3DGS / COLMAP scenes are usually y-down (default). */
+  /** World up axis of the scene. Default 'auto' (ground-plane estimate, else y-down as in COLMAP). */
   up?: UpAxis;
   /** Clear color, linear 0..1. */
   background?: [number, number, number];
@@ -91,6 +91,7 @@ export class Viewer {
   private readonly loader: Worker;
   private cpuSorter: Worker | null = null;
   private readonly gpuSort: boolean;
+  private upMode: UpAxis;
 
   private active: SplatScene | null = null;
   private fading: FadingScene[] = [];
@@ -150,7 +151,8 @@ export class Viewer {
       crossfadeMs: opts.crossfadeMs ?? 450,
       onError: opts.onError,
     };
-    this.camera = new OrbitCamera(opts.up ?? 'y-down');
+    this.upMode = opts.up ?? 'auto';
+    this.camera = new OrbitCamera(this.upMode);
     this.camera.fovY = (this.opts.fovDeg * Math.PI) / 180;
     this.camera.autoOrbit = this.opts.autoOrbit;
     this.controls = new CameraControls(canvas, this.camera);
@@ -305,7 +307,7 @@ export class Viewer {
   }
 
   setUpAxis(up: UpAxis): void {
-    this.camera.setUp(up);
+    this.upMode = up;
     this.fitToScene();
   }
 
@@ -317,10 +319,12 @@ export class Viewer {
   /** Frame the robust bounds of the active scene. */
   fitToScene(snap = true): void {
     if (!this.active) return;
-    const b = computeBounds(this.active.allSamples());
+    const samples = this.active.allSamples();
+    const b = computeBounds(samples);
     if (!b) return;
     this.bounds = b;
-    this.camera.fit(b.center, b.focusRadius, snap, b.radius);
+    this.camera.setUp(this.upMode === 'auto' ? estimateUp(samples, b) : this.upMode);
+    this.camera.fit(b.focusCenter, b.focusRadius, snap, b.radius);
     this.dirty = true;
   }
 

@@ -2,7 +2,8 @@ import {
   add, cross, dot, length, lookAtCV, normalize, perpendicular, scale, sub, type Vec3,
 } from './math';
 
-export type UpAxis = 'y-down' | 'y-up' | 'z-up' | 'z-down' | Vec3;
+/** 'auto' estimates up from the scene (ground-plane PCA), falling back to y-down. */
+export type UpAxis = 'auto' | 'y-down' | 'y-up' | 'z-up' | 'z-down' | Vec3;
 
 export function upVector(up: UpAxis): Vec3 {
   if (Array.isArray(up)) return normalize(up);
@@ -10,6 +11,7 @@ export function upVector(up: UpAxis): Vec3 {
     case 'y-up': return [0, 1, 0];
     case 'z-up': return [0, 0, 1];
     case 'z-down': return [0, 0, -1];
+    case 'auto':
     case 'y-down':
     default: return [0, -1, 0];
   }
