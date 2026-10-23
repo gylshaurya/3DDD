@@ -285,12 +285,12 @@ test.describe('app shell', () => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-    await page.goto('/');
-    await expect(page.locator('.hud')).toContainText('1,026,508 splats', { timeout: 60_000 });
+    await page.goto('/#/sandbox');
+    await expect(page.locator('.app .hud')).toContainText('1,026,508 splats', { timeout: 60_000 });
     await page.waitForTimeout(800);
     await page.screenshot({ path: join(SHOT_DIR, 'e2e-app-train.png') });
     await page.getByRole('button', { name: 'Bonsai (SH3)' }).click();
-    await expect(page.locator('.hud')).toContainText('1,157,141 splats', { timeout: 60_000 });
+    await expect(page.locator('.app .hud')).toContainText('1,157,141 splats', { timeout: 60_000 });
     await page.waitForTimeout(1500);
     await page.screenshot({ path: join(SHOT_DIR, 'e2e-app-bonsai.png') });
     // orbit by dragging

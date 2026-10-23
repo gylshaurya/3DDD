@@ -818,3 +818,24 @@
     display: none;
   }
 }
+
+.scale-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(14, 16, 20, 0.7);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+}
+.scale-slider input {
+  width: 110px;
+  accent-color: var(--accent);
+}
+.scale-slider .mono {
+  width: 34px;
+  text-align: right;
+}

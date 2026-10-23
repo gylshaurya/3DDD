@@ -94,6 +94,7 @@ export class Viewer {
   private cpuSorter: Worker | null = null;
   private readonly gpuSort: boolean;
   private upMode: UpAxis;
+  private splatScale = 1;
 
   private active: SplatScene | null = null;
   private fading: FadingScene[] = [];
@@ -327,6 +328,12 @@ export class Viewer {
       this.camera.lookFrom(eye, target, true);
       this.dirty = true;
     }
+  }
+
+  /** Multiplies every Gaussian's 3D scale (1 = as trained). Small values reveal the individual splats. */
+  setSplatScale(scale: number): void {
+    this.splatScale = Math.max(0.01, scale);
+    this.dirty = true;
   }
 
   setBackground(rgb: [number, number, number]): void {
@@ -582,7 +589,7 @@ export class Viewer {
     u[26] = scene.shStride;
     u[27] = compact ? 1 : 0;
     f[28] = alpha;
-    f[29] = 1;
+    f[29] = this.splatScale;
     f[30] = Math.max(1e-4, this.camera.sceneRadius * 0.03);
     this.device.queue.writeBuffer(scene.uniforms, 0, this.uniformData);
   }

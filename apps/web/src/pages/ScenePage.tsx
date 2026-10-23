@@ -13,6 +13,7 @@ export function ScenePage({ id }: { id: string }) {
   const [loading, setLoading] = useState(0);
   const [recording, setRecording] = useState<number | null>(null);
   const [info, setInfo] = useState(true);
+  const [splatScale, setSplatScale] = useState(1);
   const viewer = useRef<Viewer | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -26,6 +27,7 @@ export function ScenePage({ id }: { id: string }) {
 
   useEffect(() => viewer.current?.setAutoOrbit(orbit), [orbit]);
   useEffect(() => viewer.current?.setFlyMode(fly), [fly]);
+  useEffect(() => viewer.current?.setSplatScale(splatScale), [splatScale]);
   useEffect(() => setLoading(stats ? stats.loadProgress : 0), [stats]);
 
   const screenshot = () => {
@@ -129,6 +131,19 @@ export function ScenePage({ id }: { id: string }) {
           <button className="btn small" onClick={() => viewer.current && frameScene(viewer.current, scene?.scene)}>
             Reset view
           </button>
+          <label className="scale-slider" title="Shrink every Gaussian to see what the scene is made of">
+            <span className="eyebrow">Gaussian size</span>
+            <input
+              type="range"
+              min={0.02}
+              max={1}
+              step={0.01}
+              value={splatScale}
+              onChange={(e) => setSplatScale(+e.target.value)}
+              aria-label="Gaussian size"
+            />
+            <span className="mono">{Math.round(splatScale * 100)}%</span>
+          </label>
           <button className="btn small" onClick={screenshot}>
             Screenshot
           </button>
