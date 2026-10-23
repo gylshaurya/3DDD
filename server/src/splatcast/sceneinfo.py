@@ -1,0 +1,120 @@
+"""Scene metadata derived from the camera solve, plus .splat encoding helpers.
+
+COLMAP worlds have an arbitrary orientation. People hold phones upright, so the
+average camera "up" (-Y in COLMAP's camera frame) is a good estimate of gravity.
+The home view is one of the real capture viewpoints, so the first thing the
+viewer shows looks just like the video.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+from plyfile import PlyData
+
+SPLAT_DTYPE = np.dtype([("pos", "<f4", 3), ("scale", "<f4", 3), ("rgba", "u1", 4), ("rot", "u1", 4)])
+
+
+def encode_splat(pos, scale, rgba, quat_wxyz) -> bytes:
+    """antimatter15 .splat: linear scales, quaternion (w,x,y,z) packed as q*128+128."""
+    n = len(pos)
+    out = np.empty(n, SPLAT_DTYPE)
+    out["pos"] = pos
+    out["scale"] = scale
+    out["rgba"] = np.clip(rgba, 0, 255).astype(np.uint8)
+    q = quat_wxyz / np.linalg.norm(quat_wxyz, axis=1, keepdims=True)
+    out["rot"] = np.clip(q * 128 + 128, 0, 255).astype(np.uint8)
+    return out.tobytes()
+
+
+def ply_to_splat(ply_path: Path, max_splats: int | None = None) -> bytes:
+    """Standard 3DGS .ply → compact .splat (SH band 0 only), sorted by visual importance."""
+    v = PlyData.read(str(ply_path))["vertex"].data
+    pos = np.stack([v["x"], v["y"], v["z"]], 1)
+    scale = np.exp(np.stack([v["scale_0"], v["scale_1"], v["scale_2"]], 1))
+    opac = 1 / (1 + np.exp(-v["opacity"]))
+    C0 = 0.28209479177387814
+    rgb = 0.5 + C0 * np.stack([v["f_dc_0"], v["f_dc_1"], v["f_dc_2"]], 1)
+    rgba = np.concatenate([rgb, opac[:, None]], 1) * 255
+    quat = np.stack([v["rot_0"], v["rot_1"], v["rot_2"], v["rot_3"]], 1)
+    order = np.argsort(-(scale.prod(1) * opac))
+    if max_splats:
+        order = order[:max_splats]
+    return encode_splat(pos[order], scale[order], rgba[order], quat[order])
+
+
+def scene_info(preview_json: Path) -> dict:
+    data = json.loads(preview_json.read_text())
+    cams = data["cameras"]
+    centers = np.array([c["center"] for c in cams])
+    rots = np.array([c["rotation"] for c in cams])  # camera-to-world
+    up = -rots[:, :, 1].mean(0)
+    up /= np.linalg.norm(up)
+    fwd = rots[:, :, 2]
+    pts = np.array(data["points"], np.float32).reshape(-1, 3)
+
+    # Target: the point all cameras look at most (least-squares intersection of view rays).
+    A = np.zeros((3, 3))
+    b = np.zeros(3)
+    for c, d in zip(centers, fwd):
+        P = np.eye(3) - np.outer(d, d)
+        A += P
+        b += P @ c
+    try:
+        target = np.linalg.solve(A, b)
+    except np.linalg.LinAlgError:
+        target = np.median(pts, 0)
+    # Guard against degenerate (near-parallel) rays: fall back to the robust point median.
+    if np.linalg.norm(target - centers.mean(0)) > 3 * np.linalg.norm(centers - centers.mean(0), axis=1).max():
+        target = np.median(pts, 0)
+
+    home = cams[len(cams) // 2]
+    eye = np.array(home["center"])
+    eye = target + (eye - target) * 1.15  # step back a little so the subject is fully in frame
+    radius = float(np.linalg.norm(centers - target, axis=1).mean())
+    return {
+        "up": up.round(5).tolist(),
+        "target": target.round(5).tolist(),
+        "home_eye": eye.round(5).tolist(),
+        "orbit_radius": round(radius, 4),
+        "num_cameras": len(cams),
+    }
+
+
+def sfm_preview_splat(preview_json: Path) -> bytes:
+    """Sparse points as tiny splats + every camera drawn as a glowing frustum made of splats."""
+    data = json.loads(preview_json.read_text())
+    pts = np.array(data["points"], np.float32).reshape(-1, 3)
+    cols = np.array(data["colors"], np.uint8).reshape(-1, 3)
+    cams = data["cameras"]
+    centers = np.array([c["center"] for c in cams])
+    extent = float(np.linalg.norm(centers - centers.mean(0), axis=1).mean())
+
+    s = extent * 0.0035
+    pos = [pts]
+    scale = [np.full((len(pts), 3), s, np.float32)]
+    rgba = [np.concatenate([cols, np.full((len(pts), 1), 255, np.uint8)], 1)]
+
+    fr = extent * 0.06  # frustum depth
+    edge_pts = []
+    for c in cams:
+        C = np.array(c["center"])
+        R = np.array(c["rotation"])
+        hw = 0.5 * c["width"] / c["fx"]
+        hh = 0.5 * c["height"] / c["fx"]
+        corners = [C + R @ (np.array([x * hw, y * hh, 1.0]) * fr) for x, y in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        segs = [(C, k) for k in corners] + [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+        for a, b in segs:
+            t = np.linspace(0, 1, 12)[:, None]
+            edge_pts.append(a + (b - a) * t)
+    if edge_pts:
+        e = np.concatenate(edge_pts).astype(np.float32)
+        pos.append(e)
+        scale.append(np.full((len(e), 3), s * 0.6, np.float32))
+        rgba.append(np.tile(np.array([[255, 196, 64, 255]], np.uint8), (len(e), 1)))
+
+    pos_a = np.concatenate(pos)
+    quat = np.tile(np.array([[1, 0, 0, 0]], np.float32), (len(pos_a), 1))
+    return encode_splat(pos_a, np.concatenate(scale), np.concatenate(rgba).astype(np.float32), quat)

@@ -15,6 +15,10 @@ declare global {
 }
 
 const params = new URLSearchParams(location.search);
+const vec = (k: string): [number, number, number] | null => {
+  const v = params.get(k)?.split(',').map(Number);
+  return v && v.length === 3 && v.every(Number.isFinite) ? [v[0], v[1], v[2]] : null;
+};
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 if (params.get('hud') === '0') hud.style.display = 'none';
@@ -36,7 +40,7 @@ async function main(): Promise<void> {
   let viewer: Viewer;
   try {
     viewer = await createViewer(canvas, {
-      up: (params.get('up') as UpAxis) ?? 'auto',
+      up: vec('up') ?? (params.get('up') as UpAxis | null) ?? 'auto',
       autoOrbit: params.get('orbit') === '1',
       forceCpuSort: params.get('cpu') === '1',
       onError: (e) => { window.__splat.error = e.message; },
@@ -60,6 +64,8 @@ async function main(): Promise<void> {
   if (url) {
     try {
       await viewer.load(url);
+      const eye = vec('eye'), target = vec('target');
+      if (eye && target) viewer.lookAt(eye, target);
       window.__splat.loaded = true;
     } catch (err) {
       window.__splat.error = err instanceof Error ? err.message : String(err);

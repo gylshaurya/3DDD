@@ -10,3 +10,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 scenes/
 data/
+tools/
+server/.venv/
+__pycache__/
+.pytest_cache/

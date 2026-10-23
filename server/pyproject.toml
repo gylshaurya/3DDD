@@ -1,0 +1,28 @@
+[project]
+name = "splatcast"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Shaurya", email = "shaurya.shauryagoyal123@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "modal>=1.6.2",
+    "numpy>=2.5.4",
+    "opencv-python-headless>=5.0.0.93",
+    "pillow>=13.0.0",
+    "plyfile>=1.1.5",
+    "pycolmap>=4.2.1",
+    "pytest>=9.1.1",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+splatcast = "splatcast:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
