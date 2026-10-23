@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "splatcast-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "samples": "bash scripts/fetch-samples.sh"
   },
   "dependencies": {
     "react": "^19.3.1",

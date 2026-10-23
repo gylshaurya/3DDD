@@ -8,7 +8,9 @@ await page.waitForFunction(() => window.__splat && (window.__splat.loaded || win
 if (js) await page.evaluate(js);
 await page.waitForTimeout(1500);
 const samples = [];
+await page.waitForTimeout(+(process.env.WARM ?? 0));
 for (let i = 0; i < 6; i++) { await page.waitForTimeout(500); samples.push(await page.evaluate(() => window.__splat.stats)); }
 const avg = (k) => samples.reduce((s, x) => s + x[k], 0) / samples.length;
-console.log(JSON.stringify({ url, fps: +avg('fps').toFixed(1), sortMs: +avg('sortMs').toFixed(2), gpuComputeMs: +avg('gpuFrameMs').toFixed(2), visible: Math.round(avg('visibleCount')), splats: samples[0].splatCount }));
+const rs = await page.evaluate(() => window.__splat.viewer.renderScale);
+console.log(JSON.stringify({ url, renderScale: +rs.toFixed(2), fps: +avg('fps').toFixed(1), sortMs: +avg('sortMs').toFixed(2), gpuComputeMs: +avg('gpuFrameMs').toFixed(2), visible: Math.round(avg('visibleCount')), splats: samples[0].splatCount }));
 await browser.close();

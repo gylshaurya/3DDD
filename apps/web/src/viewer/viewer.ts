@@ -24,6 +24,8 @@ export interface ViewerOptions {
   forceCpuSort?: boolean;
   /** Crossfade duration for live snapshot swaps (ms, default 450). */
   crossfadeMs?: number;
+  /** Lower the internal resolution while the camera moves if the GPU can't hold ~60 fps (default true). */
+  adaptiveResolution?: boolean;
   /** Called on unrecoverable GPU errors (device lost, etc.). */
   onError?: (err: Error) => void;
 }
@@ -100,6 +102,12 @@ export class Viewer {
   private userInteractedAt = 0;
   private loadStartedAt = 0;
 
+  /** Internal resolution multiplier used while moving (adaptive, 0.5..1). */
+  renderScale = 1;
+  private lastFrameScale = 1;
+  private adaptFrames = 0;
+  private adaptWindowStart = 0;
+
   private raf = 0;
   private lastT = 0;
   private dirty = true;
@@ -149,6 +157,7 @@ export class Viewer {
       fovDeg: opts.fovDeg ?? 50,
       forceCpuSort: opts.forceCpuSort ?? false,
       crossfadeMs: opts.crossfadeMs ?? 450,
+      adaptiveResolution: opts.adaptiveResolution ?? true,
       onError: opts.onError,
     };
     this.upMode = opts.up ?? 'auto';
@@ -340,7 +349,7 @@ export class Viewer {
   }
 
   getStats(): ViewerStats {
-    return { ...this.stats };
+    return { ...this.stats, splatCount: this.active?.loaded ?? 0 };
   }
 
   /** Render immediately and return the frame as a PNG data URL. */
@@ -508,18 +517,41 @@ export class Viewer {
     this.lastT = t;
     const keyMoved = this.controls.tick(dt);
     const camMoved = this.camera.update(dt);
-    if (this.fading.length) this.dirty = true;
-    if (!(this.dirty || camMoved || keyMoved)) {
+    const moving = camMoved || keyMoved || this.fading.length > 0;
+    if (!(this.dirty || moving)) {
+      // camera came to rest after reduced-resolution frames: draw one full-quality frame
+      if (this.lastFrameScale < 1) this.renderFrame(t, 1);
+      this.adaptWindowStart = 0;
       this.maybeEmitStats(t, false);
       return;
     }
     this.dirty = false;
-    this.renderFrame(t);
+    const scale = moving && this.opts.adaptiveResolution ? this.renderScale : 1;
+    this.renderFrame(t, scale);
+    if (moving) this.adaptResolution(t);
     this.maybeEmitStats(t, true);
   }
 
-  private resize(): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, this.opts.maxDpr);
+  /** Steer renderScale so that continuous motion stays near 60 fps (fill-rate bound scenes). */
+  private adaptResolution(now: number): void {
+    if (!this.opts.adaptiveResolution) return;
+    if (!this.adaptWindowStart) {
+      this.adaptWindowStart = now;
+      this.adaptFrames = 0;
+      return;
+    }
+    this.adaptFrames++;
+    const elapsed = now - this.adaptWindowStart;
+    if (elapsed < 1000) return;
+    const fps = (this.adaptFrames * 1000) / elapsed;
+    if (fps < 52) this.renderScale = Math.max(0.5, this.renderScale * 0.85);
+    else if (fps > 58.5) this.renderScale = Math.min(1, this.renderScale * 1.07);
+    this.adaptWindowStart = now;
+    this.adaptFrames = 0;
+  }
+
+  private resize(scale = 1): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, this.opts.maxDpr) * scale;
     const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
     const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -546,8 +578,9 @@ export class Viewer {
     this.device.queue.writeBuffer(scene.uniforms, 0, this.uniformData);
   }
 
-  private renderFrame(now: number): void {
-    this.resize();
+  private renderFrame(now: number, scale = 1): void {
+    this.resize(scale);
+    this.lastFrameScale = scale;
     const view = this.camera.viewMatrix();
     const eye = this.camera.eye;
 

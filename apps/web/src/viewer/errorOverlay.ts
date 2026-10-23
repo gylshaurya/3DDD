@@ -17,7 +17,8 @@ export function showWebGPUError(container: HTMLElement, err: unknown): void {
   const hint = document.createElement('p');
   hint.textContent = 'Try the latest Chrome or Edge on desktop, or Safari 26+ on macOS / iOS.';
   hint.style.cssText = 'margin:0;max-width:440px;color:#7c7f88;font-size:13px';
-  box.append(title, detail, hint);
+  box.append(title, detail);
+  if (!/chrome|safari/i.test(message)) box.append(hint);
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   container.appendChild(box);
 }
