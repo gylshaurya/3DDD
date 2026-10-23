@@ -118,3 +118,38 @@ def sfm_preview_splat(preview_json: Path) -> bytes:
     pos_a = np.concatenate(pos)
     quat = np.tile(np.array([[1, 0, 0, 0]], np.float32), (len(pos_a), 1))
     return encode_splat(pos_a, np.concatenate(scale), np.concatenate(rgba).astype(np.float32), quat)
+
+
+def spc_to_ply(data: bytes) -> bytes:
+    """Unpack the trainer's compact SPC1 transfer format into a standard 3DGS binary PLY."""
+    if data[:4] != b"SPC1":
+        raise ValueError("Not an SPC1 payload")
+    n, k = np.frombuffer(data, "<u4", 2, 4)
+    n, k = int(n), int(k)
+    off = 12
+
+    def take(dtype, count):
+        nonlocal off
+        arr = np.frombuffer(data, dtype, count, off)
+        off += arr.nbytes
+        return arr
+
+    means = take("<f4", n * 3).reshape(n, 3)
+    scales = take("<f2", n * 3).reshape(n, 3).astype(np.float32)
+    quats = take("<f2", n * 4).reshape(n, 4).astype(np.float32)
+    opac = take("<f2", n).astype(np.float32)
+    sh0 = take("<f2", n * 3).reshape(n, 3).astype(np.float32)
+    lo = take("<f4", k * 3)
+    hi = take("<f4", k * 3)
+    q = take("u1", n * k * 3).reshape(n, k * 3).astype(np.float32)
+    shN = (lo + q / 255 * (hi - lo)).reshape(n, k, 3)
+    # PLY convention stores SH rest channel-major: f_rest_[c*K + i].
+    rest = shN.transpose(0, 2, 1).reshape(n, k * 3)
+
+    names = ["x", "y", "z", "nx", "ny", "nz", "f_dc_0", "f_dc_1", "f_dc_2"]
+    names += [f"f_rest_{i}" for i in range(k * 3)]
+    names += ["opacity", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3"]
+    cols = np.concatenate([means, np.zeros((n, 3), np.float32), sh0, rest, opac[:, None], scales, quats], 1)
+    header = "ply\nformat binary_little_endian 1.0\n" f"element vertex {n}\n"
+    header += "".join(f"property float {name}\n" for name in names) + "end_header\n"
+    return header.encode() + np.ascontiguousarray(cols, dtype="<f4").tobytes()

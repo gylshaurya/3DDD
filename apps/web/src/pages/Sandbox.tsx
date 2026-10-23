@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { SplatViewer } from './components/SplatViewer';
-import type { Viewer, ViewerStats } from './viewer';
-import './App.css';
+import { SplatViewer } from '../components/SplatViewer';
+import type { Viewer, ViewerStats } from '../viewer';
+import './Sandbox.css';
 
 const SAMPLES = [
   { label: 'Train', url: '/samples/train.splat' },
@@ -10,7 +10,7 @@ const SAMPLES = [
   { label: 'Sneaker', url: '/samples/nike.splat' },
 ];
 
-export default function App() {
+export function Sandbox() {
   const [src, setSrc] = useState<string>(SAMPLES[0].url);
   const [stats, setStats] = useState<ViewerStats | null>(null);
   const [orbit, setOrbit] = useState(false);

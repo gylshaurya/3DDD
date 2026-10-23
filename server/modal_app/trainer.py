@@ -86,6 +86,32 @@ def _knn_scale(pts, k: int = 3, chunk: int = 2048):
     return out.clamp_min(1e-7)
 
 
+def _pack(params) -> bytes:
+    """Compact transfer format (~3x smaller than PLY); unpacked to a standard PLY by the client.
+
+    Header: b"SPC1", N:u32, K:u32 (SH rest coeffs per channel); then means f32[N,3],
+    log-scales f16[N,3], quats f16[N,4], opacity-logits f16[N], sh0 f16[N,3],
+    shN min f32[K*3], shN max f32[K*3], shN u8[N,K*3] (per-coefficient min/max quantised).
+    """
+    import struct
+
+    import numpy as np
+    import torch
+
+    with torch.no_grad():
+        n = len(params["means"])
+        shN = params["shN"].reshape(n, -1)
+        k = params["shN"].shape[1]
+        lo, hi = shN.min(0).values, shN.max(0).values
+        q = ((shN - lo) / (hi - lo).clamp_min(1e-8) * 255).round().clamp(0, 255).to(torch.uint8)
+        parts = [
+            params["means"].float(), params["scales"].half(), params["quats"].half(),
+            params["opacities"].half(), params["sh0"].reshape(n, 3).half(), lo.float(), hi.float(), q,
+        ]
+        body = b"".join(np.ascontiguousarray(t.cpu().numpy()).tobytes() for t in parts)
+    return b"SPC1" + struct.pack("<II", n, k) + body
+
+
 def _train(payload: dict, cfg: dict):
     import io
     import math
@@ -108,6 +134,8 @@ def _train(payload: dict, cfg: dict):
     snap_max = int(cfg.get("snapshot_max_splats", 300_000))
     sh_max = int(cfg.get("sh_degree", 3))
     eval_every = int(cfg.get("eval_every", 0))  # hold out every Nth view for test PSNR (0 = off)
+    job_id = cfg.get("job_id")
+    cancel_flags = modal.Dict.from_name("splatcast-cancel", create_if_missing=True) if job_id else None
 
     yield {"type": "status", "msg": f"GPU ready: {torch.cuda.get_device_name()}"}
 
@@ -215,6 +243,9 @@ def _train(payload: dict, cfg: dict):
             data = snapshot(snap_max, "splat")
             yield {"type": "snapshot", "step": step + 1, "format": "splat", "data": data}
             last_snap = time.time()
+        if cancel_flags is not None and step % 200 == 0 and cancel_flags.get(job_id):
+            yield {"type": "cancelled", "step": step + 1}
+            return
         if now - t_start > max_seconds:
             yield {"type": "status", "msg": f"Time budget reached at step {step + 1}; exporting"}
             break
@@ -236,8 +267,9 @@ def _train(payload: dict, cfg: dict):
             yield {"type": "compare", "view": i, "held_out": i in test_ids, "data": buf.getvalue()}
 
     yield {"type": "status", "msg": "Exporting full-quality scene"}
-    ply = snapshot(cap, "ply")
-    chunk = 32 * 1024 * 1024
-    for off in range(0, len(ply), chunk):
-        yield {"type": "file", "name": "scene.ply", "data": ply[off : off + chunk], "last": off + chunk >= len(ply)}
+    packed = _pack(params)
+    chunk = 16 * 1024 * 1024
+    for off in range(0, len(packed), chunk):
+        yield {"type": "file", "name": "scene.spc", "data": packed[off : off + chunk],
+               "last": off + chunk >= len(packed)}
     yield {"type": "done", "total_seconds": round(time.time() - t_start, 1)}

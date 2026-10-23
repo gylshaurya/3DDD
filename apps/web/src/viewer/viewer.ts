@@ -317,7 +317,16 @@ export class Viewer {
 
   setUpAxis(up: UpAxis): void {
     this.upMode = up;
-    this.fitToScene();
+    if (this.active) {
+      this.fitToScene();
+    } else if (up !== 'auto') {
+      // No scene yet: apply the axis now (keeping the view) so a following lookAt + keepCamera load is level.
+      const eye = this.camera.eye;
+      const target = this.camera.target;
+      this.camera.setUp(up);
+      this.camera.lookFrom(eye, target, true);
+      this.dirty = true;
+    }
   }
 
   setBackground(rgb: [number, number, number]): void {

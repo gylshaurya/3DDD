@@ -42,8 +42,8 @@ def _largest(recs: dict[int, pycolmap.Reconstruction]) -> pycolmap.Reconstructio
 def solve_poses(
     frames_dir: Path,
     work_dir: Path,
-    max_features: int = 8192,
-    max_image_size: int = 1600,
+    max_features: int = 4096,
+    max_image_size: int = 1024,
     progress: Progress | None = None,
 ) -> SfmStats:
     progress = progress or (lambda f, m: None)
