@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env*
+# large binary scene data
+apps/web/public/samples/*
+!apps/web/public/samples/.gitkeep
+apps/web/test-results/
+apps/web/playwright-report/
+scenes/
+data/
