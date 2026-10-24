@@ -19,7 +19,11 @@ export function Home() {
     return () => clearInterval(id);
   }, []);
 
-  const hero = scenes[0];
+  // Feature the best-looking capture: highest PSNR on held-out views, else the newest.
+  const hero = scenes.reduce<SceneSummary | undefined>(
+    (best, s) => ((s.metrics.train?.test_psnr ?? 0) > (best?.metrics.train?.test_psnr ?? 0) ? s : best),
+    scenes[0],
+  );
   const active = jobs.filter((j) => j.status === 'running' || j.status === 'queued');
 
   return (

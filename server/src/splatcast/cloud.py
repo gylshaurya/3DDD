@@ -14,6 +14,8 @@ from . import budget
 
 APP_NAME = "splatcast-trainer"
 
+SETUP_HEADROOM_S = 240  # cold start, image decode, init, held-out eval and export
+
 PRESETS = {
     # steps, gaussian cap, training image long side, wall-clock limit (s)
     "preview": {"steps": 3000, "cap_max": 300_000, "max_side": 1000, "max_seconds": 6 * 60},
@@ -64,10 +66,12 @@ def train_cloud(
 
     cfg = dict(PRESETS[preset])
     cfg.update(overrides or {})
-    budget.check_budget(gpu, cfg["max_seconds"] + 120)
+    # The Modal hard timeout is exactly what the guard reserves: training time plus setup/export headroom.
+    hard_timeout = int(cfg["max_seconds"] + SETUP_HEADROOM_S)
+    budget.check_budget(gpu, hard_timeout)
     payload = build_payload(dataset, cfg.pop("max_side"))
     mb = sum(len(b) for b in payload["images"]) / 1e6
     log(f"Uploading {len(payload['images'])} views ({mb:.0f} MB) to a Modal {gpu}")
-    fn = modal.Function.from_name(APP_NAME, "train").with_options(gpu=gpu)
-    with budget.Run(gpu, f"train:{preset}:{dataset.parent.parent.name}"):
+    fn = modal.Function.from_name(APP_NAME, "train").with_options(gpu=gpu, timeout=hard_timeout)
+    with budget.Run(gpu, f"train:{preset}:{dataset.parent.parent.name}", hard_timeout):
         yield from fn.remote_gen(payload, cfg)

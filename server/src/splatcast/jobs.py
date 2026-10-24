@@ -64,7 +64,9 @@ class JobManager:
         self.cancel_flags: dict[str, threading.Event] = {}
         self.queue: queue.Queue[str] = queue.Queue()
         self.loop: asyncio.AbstractEventLoop | None = None
-        self._lock = threading.Lock()
+        # Re-entrant: guards job state, history and subscribers across the worker thread,
+        # the FastAPI threadpool and the event loop.
+        self._lock = threading.RLock()
         self._load_existing()
         threading.Thread(target=self._worker, daemon=True).start()
 
@@ -76,13 +78,22 @@ class JobManager:
             except (TypeError, json.JSONDecodeError):
                 continue
             if job.status in ("queued", "running"):
+                if job.status == "running" and job.backend == "modal":
+                    # The GPU may still be training for a client that no longer exists: stop it.
+                    threading.Thread(target=relay_cancel, args=(job.id,), daemon=True).start()
                 job.status, job.error = "failed", "Server restarted while this job was running"
             self.jobs[job.id] = job
             ev = jf.parent / "events.jsonl"
-            self.history[job.id] = [json.loads(line) for line in ev.read_text().splitlines()] if ev.exists() else []
+            self.history[job.id] = _read_events(ev)
 
     def _save(self, job: Job) -> None:
-        (job.dir / "job.json").write_text(json.dumps(job.public(), indent=2))
+        with self._lock:
+            (job.dir / "job.json").write_text(json.dumps(job.public(), indent=2))
+
+    def snapshot(self, job: Job) -> dict:
+        """A consistent copy of a job for API readers (the worker mutates nested dicts)."""
+        with self._lock:
+            return job.public()
 
     # ---- events ------------------------------------------------------------------------------
     def publish(self, job: Job, event: dict) -> None:
@@ -108,10 +119,11 @@ class JobManager:
             self.subscribers.get(job_id, set()).discard(q)
 
     def _update(self, job: Job, **kw) -> None:
-        for k, v in kw.items():
-            setattr(job, k, v)
-        self._save(job)
-        self.publish(job, {"type": "job", "job": job.public()})
+        with self._lock:
+            for k, v in kw.items():
+                setattr(job, k, v)
+            self._save(job)
+            self.publish(job, {"type": "job", "job": job.public()})
 
     # ---- public API --------------------------------------------------------------------------
     def create(self, video: Path, name: str, backend: str, preset: str, gpu: str) -> Job:
@@ -137,11 +149,7 @@ class JobManager:
         flag = self.cancel_flags.setdefault(job_id, threading.Event())
         flag.set()
         if job.backend == "modal" and job.status == "running":
-            try:
-                import modal
-                modal.Dict.from_name("splatcast-cancel", create_if_missing=True)[job_id] = True
-            except Exception:  # noqa: BLE001 - the trainer's own time cap still bounds the run
-                pass
+            threading.Thread(target=relay_cancel, args=(job_id,), daemon=True).start()
         if job.status == "queued":
             self._update(job, status="cancelled", message="Cancelled")
 
@@ -173,13 +181,15 @@ class JobManager:
 
     def _stage(self, job: Job, stage: str) -> None:
         self._check(job)
-        job.timings[stage] = {"start": time.time()}
+        with self._lock:
+            job.timings[stage] = {"start": time.time()}
         self._update(job, stage=stage, stage_progress=0.0)
         self.publish(job, {"type": "stage", "stage": stage})
 
     def _end_stage(self, job: Job, stage: str) -> None:
-        t = job.timings[stage]
-        t["seconds"] = round(time.time() - t["start"], 1)
+        with self._lock:
+            t = job.timings[stage]
+            t["seconds"] = round(time.time() - t["start"], 1)
         self._save(job)
 
     def _progress_cb(self, job: Job):
@@ -231,7 +241,8 @@ class JobManager:
         info = scene_info(d / "sfm" / "sfm_preview.json")
         (d / "scene.json").write_text(json.dumps(info))
         (d / "sfm_preview.splat").write_bytes(sfm_preview_splat(d / "sfm" / "sfm_preview.json"))
-        job.metrics["sfm"] = asdict(stats)
+        with self._lock:
+            job.metrics["sfm"] = asdict(stats)
         self._update(job, scene=info)
         self.publish(job, {"type": "sfm", "url": self.url(job, "sfm_preview.splat"), "scene": info,
                            "stats": asdict(stats)})
@@ -257,8 +268,9 @@ class JobManager:
             shutil.copy2(d / f, out / f)
         self._end_stage(job, "export")
         total = sum(t.get("seconds", 0) for t in job.timings.values())
-        job.metrics["total_seconds"] = round(total, 1)
-        job.metrics["ply_mb"] = round(ply_path.stat().st_size / 1e6, 1)
+        with self._lock:
+            job.metrics["total_seconds"] = round(total, 1)
+            job.metrics["ply_mb"] = round(ply_path.stat().st_size / 1e6, 1)
         self._update(job, status="done", stage=None, message=f"Done in {total:.0f}s")
         self.publish(job, {"type": "done", "ply": self.url(job, "scene.ply"), "splat": self.url(job, "scene.splat"),
                            "metrics": job.metrics})
@@ -279,8 +291,14 @@ class JobManager:
         compare_dir.mkdir(exist_ok=True)
         events = cloud.train_cloud(dataset, job.preset, job.gpu, {"job_id": job.id, "eval_every": 10},
                                    log=lambda m: self.publish(job, {"type": "log", "msg": m}))
+        flag = self.cancel_flags.setdefault(job.id, threading.Event())
+        relayed_at = 0.0
         for ev in events:
             k = ev["type"]
+            if flag.is_set() and time.time() - relayed_at > 10:
+                # Cancelled locally but the GPU is still streaming: (re-)send the stop flag.
+                threading.Thread(target=relay_cancel, args=(job.id,), daemon=True).start()
+                relayed_at = time.time()
             if k == "progress":
                 job.stage_progress = ev["step"] / ev["steps"]
                 self.publish(job, {**ev, "type": "train_progress"})
@@ -292,7 +310,8 @@ class JobManager:
                 self.publish(job, {"type": "compare", "url": self.url(job, f"compare/{name}"),
                                    "held_out": ev["held_out"]})
             elif k == "metrics":
-                job.metrics["train"] = {x: v for x, v in ev.items() if x != "type"}
+                with self._lock:
+                    job.metrics["train"] = {x: v for x, v in ev.items() if x != "type"}
                 self.publish(job, {"type": "metrics", "metrics": job.metrics})
             elif k == "file":
                 ply += ev["data"]
@@ -315,7 +334,8 @@ class JobManager:
                 self._snapshot(job, ev["step"], ply_to_splat(ev["path"], max_splats=300_000))
             elif k == "final_ply":
                 shutil.copy2(ev["path"], ply_path)
-                job.metrics["train"] = {"train_seconds": ev["seconds"], "steps": local.PRESETS[job.preset]["steps"]}
+                with self._lock:
+                    job.metrics["train"] = {"train_seconds": ev["seconds"], "steps": local.PRESETS[job.preset]["steps"]}
             elif k == "status":
                 self.publish(job, {"type": "log", "msg": ev["msg"]})
             elif k == "cancelled":
@@ -328,3 +348,29 @@ class JobManager:
 
 class Cancelled(Exception):
     pass
+
+
+def relay_cancel(job_id: str, attempts: int = 5) -> bool:
+    """Tell the remote trainer to stop (it polls this modal.Dict while training)."""
+    import modal
+
+    for i in range(attempts):
+        try:
+            modal.Dict.from_name("splatcast-cancel", create_if_missing=True)[job_id] = True
+            return True
+        except Exception:  # noqa: BLE001 - network hiccup; retry with backoff
+            time.sleep(1.5 * (i + 1))
+    return False
+
+
+def _read_events(path: Path) -> list[dict]:
+    """Event log reader that tolerates a torn final line (e.g. the server was killed mid-write)."""
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(errors="replace").splitlines():
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out

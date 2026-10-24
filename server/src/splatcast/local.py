@@ -43,7 +43,10 @@ def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Eve
     ]
     yield {"type": "status", "msg": f"Training on this Mac's GPU with Brush ({steps} steps)"}
     t0 = time.time()
-    proc = subprocess.Popen(cmd, cwd=out_dir, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    # stderr goes to a file: an unread PIPE fills after ~64 KB of wgpu warnings and deadlocks Brush.
+    log_path = out_dir / "brush.log"
+    log_file = log_path.open("w")
+    proc = subprocess.Popen(cmd, cwd=out_dir, stdout=subprocess.DEVNULL, stderr=log_file, text=True)
     seen: set[str] = set()
     last_step, last_t = 0, t0
     rate = None
@@ -80,8 +83,10 @@ def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Eve
     finally:
         if proc.poll() is None:
             proc.kill()
+            proc.wait()
+        log_file.close()
     if proc.returncode != 0:
-        err = proc.stderr.read()[-2000:] if proc.stderr else ""
+        err = log_path.read_text(errors="replace")[-2000:]
         raise RuntimeError(f"Brush exited with code {proc.returncode}: {err}")
     final = out_dir / f"export_{steps}.ply"
     if not final.exists():

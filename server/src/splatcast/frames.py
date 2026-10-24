@@ -106,13 +106,20 @@ def extract_frames(
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     assert proc.stdout is not None
-    for line in proc.stdout:
-        if line.startswith("out_time_us=") and info.duration:
-            try:
-                t = int(line.split("=")[1]) / 1e6
-                progress(min(0.6, 0.6 * t / info.duration), "Decoding video")
-            except ValueError:
-                pass
+    finished = False
+    try:
+        for line in proc.stdout:
+            if line.startswith("out_time_us=") and info.duration:
+                try:
+                    t = int(line.split("=")[1]) / 1e6
+                    progress(min(0.6, 0.6 * t / info.duration), "Decoding video")
+                except ValueError:
+                    pass
+        finished = True
+    finally:
+        if not finished:  # progress() raised (e.g. cancellation): don't leave ffmpeg running
+            proc.kill()
+            proc.wait()
     if proc.wait() != 0:
         raise RuntimeError(f"ffmpeg failed: {proc.stderr.read() if proc.stderr else ''}")
 

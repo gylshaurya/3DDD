@@ -83,44 +83,44 @@ async def create_job(
     gpu: str = Form("L4"),
 ) -> dict:
     tmp = Path(tempfile.mkdtemp(dir=DATA_DIR))
-    if video is not None:
-        suffix = Path(video.filename or "capture.mp4").suffix.lower() or ".mp4"
-        dst = tmp / f"upload{suffix}"
-        size = 0
-        with dst.open("wb") as f:
-            while chunk := await video.read(4 * 1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    shutil.rmtree(tmp, ignore_errors=True)
-                    raise HTTPException(413, "Video is too large (max 1.5 GB)")
-                f.write(chunk)
-        name = name or Path(video.filename or "").stem
-    elif sample:
-        src = SAMPLE_VIDEOS / f"{Path(sample).name}.mp4"
-        if not src.exists():
-            raise HTTPException(404, "No such sample")
-        dst = tmp / "upload.mp4"
-        shutil.copy2(src, dst)
-        name = name or sample
-    else:
-        raise HTTPException(400, "Upload a video or choose a sample")
-    try:
-        job = manager.create(dst, name, backend, preset, gpu)
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+    try:  # the temp dir is removed on every path: success, validation errors, client disconnects
+        if video is not None:
+            suffix = Path(video.filename or "capture.mp4").suffix.lower() or ".mp4"
+            dst = tmp / f"upload{suffix}"
+            size = 0
+            with dst.open("wb") as f:
+                while chunk := await video.read(4 * 1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(413, "Video is too large (max 1.5 GB)")
+                    f.write(chunk)
+            name = name or Path(video.filename or "").stem
+        elif sample:
+            src = SAMPLE_VIDEOS / f"{Path(sample).name}.mp4"
+            if not src.exists():
+                raise HTTPException(404, "No such sample")
+            dst = tmp / "upload.mp4"
+            shutil.copy2(src, dst)
+            name = name or sample
+        else:
+            raise HTTPException(400, "Upload a video or choose a sample")
+        try:
+            job = manager.create(dst, name, backend, preset, gpu)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return manager.snapshot(job)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return job.public()
 
 
 @app.get("/api/jobs")
 def list_jobs() -> list[dict]:
-    return [j.public() for j in sorted(manager.jobs.values(), key=lambda j: -j.created)]
+    return [manager.snapshot(j) for j in sorted(list(manager.jobs.values()), key=lambda j: -j.created)]
 
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
-    return _job(job_id).public()
+    return manager.snapshot(_job(job_id))
 
 
 @app.post("/api/jobs/{job_id}/cancel")

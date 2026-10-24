@@ -243,7 +243,7 @@ def _train(payload: dict, cfg: dict):
             data = snapshot(snap_max, "splat")
             yield {"type": "snapshot", "step": step + 1, "format": "splat", "data": data}
             last_snap = time.time()
-        if cancel_flags is not None and step % 200 == 0 and cancel_flags.get(job_id):
+        if cancel_flags is not None and step % 100 == 0 and cancel_flags.get(job_id):
             yield {"type": "cancelled", "step": step + 1}
             return
         if now - t_start > max_seconds:

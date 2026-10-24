@@ -83,23 +83,31 @@ def check_budget(gpu: str, max_seconds: float) -> dict:
 
 
 class Run:
-    """Context manager that records a run's wall-clock cost in the ledger, even on failure."""
+    """Reserves a run's worst-case cost in the ledger *before* any GPU starts, then settles it to the
+    measured wall-clock cost. If the process dies mid-run the reservation stays, so spend is never lost."""
 
-    def __init__(self, gpu: str, label: str):
-        self.gpu, self.label = gpu, label
+    def __init__(self, gpu: str, label: str, max_seconds: float):
+        self.gpu, self.label, self.max_seconds = gpu, label, max_seconds
+        self.id = f"{time.time():.6f}"
 
     def __enter__(self):
         self.t0 = time.time()
-        return self
-
-    def __exit__(self, *exc):
-        secs = time.time() - self.t0 + 30  # container start/stop overhead
         with _lock:
             data = _load()
             data["runs"].append({
-                "month": _month(), "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "label": self.label, "gpu": self.gpu, "seconds": round(secs, 1),
-                "est_cost": round(run_cost(self.gpu, secs), 4),
+                "id": self.id, "month": _month(), "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "label": self.label, "gpu": self.gpu, "status": "reserved", "seconds": round(self.max_seconds, 1),
+                "est_cost": round(run_cost(self.gpu, self.max_seconds), 4),
             })
+            MODAL_LEDGER.write_text(json.dumps(data, indent=2))
+        return self
+
+    def __exit__(self, *exc):
+        secs = min(self.max_seconds, time.time() - self.t0 + 30)  # + container start/stop overhead
+        with _lock:
+            data = _load()
+            for r in data["runs"]:
+                if r.get("id") == self.id:
+                    r.update(status="settled", seconds=round(secs, 1), est_cost=round(run_cost(self.gpu, secs), 4))
             MODAL_LEDGER.write_text(json.dumps(data, indent=2))
         return False

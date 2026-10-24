@@ -221,39 +221,43 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
 
     threading.Thread(target=pump, daemon=True).start()
     frac, features, error = 0.0, [], None
-    while True:
-        if should_cancel():
+    try:
+        while True:
+            if should_cancel():
+                progress(frac, "Cancelled")  # the callback raises Cancelled; finally kills the child
+            try:
+                line = lines.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            if line is None:
+                break
+            if line.startswith("@@"):
+                kind, _, payload = line[2:].partition(" ")
+                if kind == "PROGRESS":
+                    p = json.loads(payload)
+                    frac = max(frac, p["frac"])
+                    progress(frac, p["msg"])
+                elif kind == "ERROR":
+                    error = payload
+                continue
+            for rx, f, msg in _GLOG:
+                m = rx.search(line)
+                if not m:
+                    continue
+                if msg is None:
+                    features.append(int(m[1]))
+                    break
+                frac = max(frac, f(m) if callable(f) else f)
+                text = msg.format(*([m[0]] + list(m.groups())))
+                if features and "Matching" in text and len(features) > 1:
+                    text += f" (avg {sum(features) // len(features)} SIFT features/frame)"
+                progress(frac, text)
+                break
+    finally:
+        # Any exit path (cancel, a raising progress callback, errors) must not leave the solver running.
+        if proc.poll() is None:
             proc.kill()
             proc.wait()
-            progress(frac, "Cancelled")  # the callback raises when cancelled
-        try:
-            line = lines.get(timeout=0.25)
-        except queue.Empty:
-            continue
-        if line is None:
-            break
-        if line.startswith("@@"):
-            kind, _, payload = line[2:].partition(" ")
-            if kind == "PROGRESS":
-                p = json.loads(payload)
-                frac = max(frac, p["frac"])
-                progress(frac, p["msg"])
-            elif kind == "ERROR":
-                error = payload
-            continue
-        for rx, f, msg in _GLOG:
-            m = rx.search(line)
-            if not m:
-                continue
-            if msg is None:
-                features.append(int(m[1]))
-                break
-            frac = max(frac, f(m) if callable(f) else f)
-            text = msg.format(*([m[0]] + list(m.groups())))
-            if features and "Matching" in text and len(features) > 1:
-                text += f" (avg {sum(features) // len(features)} SIFT features/frame)"
-            progress(frac, text)
-            break
     if proc.wait() != 0:
         raise RuntimeError(error or f"Camera solve crashed (exit code {proc.returncode})")
     return SfmStats(**json.loads((work_dir / "sfm_stats.json").read_text()))

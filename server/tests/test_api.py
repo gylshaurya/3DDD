@@ -57,3 +57,18 @@ def test_static_files_cannot_escape_data_dirs(client):
     for path in ("/files/jobs/..%2Fsecret.json", "/files/scenes/../secret.json", "/..%2F..%2Fdata%2Fsecret.json"):
         r = client.get(path)
         assert "s3cret" not in r.text, path
+
+
+def test_tmp_dirs_cleaned_on_errors(client):
+    before = {p.name for p in config.DATA_DIR.iterdir()}
+    client.post("/api/jobs", data={"sample": "nope"})
+    client.post("/api/jobs", data={})
+    after = {p.name for p in config.DATA_DIR.iterdir()}
+    assert after == before
+
+
+def test_torn_event_log_does_not_break_startup(tmp_path):
+    from splatcast.jobs import _read_events
+    f = tmp_path / "events.jsonl"
+    f.write_text('{"t": 1, "type": "log", "msg": "ok"}\n{"t": 2, "type": "lo')
+    assert [e["msg"] for e in _read_events(f)] == ["ok"]

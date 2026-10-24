@@ -100,6 +100,15 @@ def test_budget_refuses_when_billing_unreadable(monkeypatch, tmp_path):
 
 def test_budget_ledger_records_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(budget, "MODAL_LEDGER", tmp_path / "ledger.json")
-    with budget.Run("L4", "t"):
+    with budget.Run("L4", "t", max_seconds=600):
         pass
-    assert budget.ledger_this_month() > 0
+    settled = budget.ledger_this_month()
+    assert 0 < settled < budget.run_cost("L4", 600)
+
+
+def test_budget_reservation_survives_a_crash(monkeypatch, tmp_path):
+    """If the server dies mid-run, __exit__ never runs; the worst-case reservation must remain."""
+    monkeypatch.setattr(budget, "MODAL_LEDGER", tmp_path / "ledger.json")
+    run = budget.Run("H100", "t", max_seconds=900)
+    run.__enter__()  # process "dies" here
+    assert budget.ledger_this_month() == pytest.approx(budget.run_cost("H100", 900), abs=1e-3)
