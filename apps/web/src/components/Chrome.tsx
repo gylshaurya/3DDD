@@ -4,13 +4,13 @@ import { api, type Budget } from '../lib/api';
 
 export function Logo() {
   return (
-    <a href="#/" className="logo" aria-label="Splatcast home">
+    <a href="#/" className="logo" aria-label="3DDD home">
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
         <ellipse cx="9" cy="10" rx="6.5" ry="4" transform="rotate(-25 9 10)" fill="var(--accent)" opacity="0.95" />
         <ellipse cx="15.5" cy="14" rx="5" ry="3" transform="rotate(35 15.5 14)" fill="#7dd3fc" opacity="0.8" />
         <ellipse cx="11" cy="17" rx="3.4" ry="2" transform="rotate(-10 11 17)" fill="#f472b6" opacity="0.75" />
       </svg>
-      <span>Splatcast</span>
+      <span>3DDD</span>
     </a>
   );
 }

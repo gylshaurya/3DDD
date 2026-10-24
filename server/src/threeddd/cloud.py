@@ -12,7 +12,7 @@ from PIL import Image
 
 from . import budget
 
-APP_NAME = "splatcast-trainer"
+APP_NAME = "threeddd-trainer"
 
 SETUP_HEADROOM_S = 240  # cold start, image decode, init, held-out eval and export
 

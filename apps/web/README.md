@@ -1,4 +1,4 @@
-# Splatcast web
+# 3DDD web
 
 Vite + React + TypeScript app with a from-scratch **WebGPU 3D Gaussian Splatting renderer** (`src/viewer/`, no splat libraries).
 

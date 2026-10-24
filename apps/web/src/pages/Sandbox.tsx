@@ -44,7 +44,7 @@ export function Sandbox() {
         onError={(e) => setError(e.message)}
       />
       <header className="bar">
-        <strong className="brand">Splatcast</strong>
+        <strong className="brand">3DDD</strong>
         <nav>
           {SAMPLES.map((s) => (
             <button key={s.url} className={s.url === src ? 'on' : ''} onClick={() => { setError(null); setSrc(s.url); }}>

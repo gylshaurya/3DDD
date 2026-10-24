@@ -1,5 +1,5 @@
 [project]
-name = "splatcast"
+name = "threeddd"
 version = "0.1.0"
 description = "Add your description here"
 authors = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-splatcast = "splatcast:main"
+threeddd = "threeddd:main"
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]

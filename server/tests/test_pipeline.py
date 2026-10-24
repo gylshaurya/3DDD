@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 from plyfile import PlyData
 
-from splatcast import budget
-from splatcast.frames import select_sharpest
-from splatcast.sceneinfo import SPLAT_DTYPE, encode_splat, ply_to_splat, scene_info, spc_to_ply
+from threeddd import budget
+from threeddd.frames import select_sharpest
+from threeddd.sceneinfo import SPLAT_DTYPE, encode_splat, ply_to_splat, scene_info, spc_to_ply
 
 
 def make_spc(n=500, k=15, seed=0):

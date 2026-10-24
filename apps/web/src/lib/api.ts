@@ -1,4 +1,4 @@
-// Typed client for the Splatcast server (server/src/splatcast/api.py).
+// Typed client for the 3DDD server (server/src/threeddd/api.py).
 
 export type Vec3 = [number, number, number];
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';

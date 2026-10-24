@@ -1,4 +1,4 @@
-"""Splatcast cloud trainer: 3D Gaussian Splatting on a Modal GPU.
+"""3DDD cloud trainer: 3D Gaussian Splatting on a Modal GPU.
 
 Our own training loop on top of gsplat's CUDA rasterizer:
   * SfM-point initialisation (k-NN scale init, SH0 colour init)
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import modal
 
-APP_NAME = "splatcast-trainer"
+APP_NAME = "threeddd-trainer"
 app = modal.App(APP_NAME)
 
 image = (
@@ -135,7 +135,7 @@ def _train(payload: dict, cfg: dict):
     sh_max = int(cfg.get("sh_degree", 3))
     eval_every = int(cfg.get("eval_every", 0))  # hold out every Nth view for test PSNR (0 = off)
     job_id = cfg.get("job_id")
-    cancel_flags = modal.Dict.from_name("splatcast-cancel", create_if_missing=True) if job_id else None
+    cancel_flags = modal.Dict.from_name("threeddd-cancel", create_if_missing=True) if job_id else None
 
     yield {"type": "status", "msg": f"GPU ready: {torch.cuda.get_device_name()}"}
 

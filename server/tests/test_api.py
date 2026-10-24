@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from splatcast import api, config
+from threeddd import api, config
 
 
 @pytest.fixture()
@@ -68,7 +68,7 @@ def test_tmp_dirs_cleaned_on_errors(client):
 
 
 def test_torn_event_log_does_not_break_startup(tmp_path):
-    from splatcast.jobs import _read_events
+    from threeddd.jobs import _read_events
     f = tmp_path / "events.jsonl"
     f.write_text('{"t": 1, "type": "log", "msg": "ok"}\n{"t": 2, "type": "lo')
     assert [e["msg"] for e in _read_events(f)] == ["ok"]

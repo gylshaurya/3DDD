@@ -356,7 +356,7 @@ def relay_cancel(job_id: str, attempts: int = 5) -> bool:
 
     for i in range(attempts):
         try:
-            modal.Dict.from_name("splatcast-cancel", create_if_missing=True)[job_id] = True
+            modal.Dict.from_name("threeddd-cancel", create_if_missing=True)[job_id] = True
             return True
         except Exception:  # noqa: BLE001 - network hiccup; retry with backoff
             time.sleep(1.5 * (i + 1))

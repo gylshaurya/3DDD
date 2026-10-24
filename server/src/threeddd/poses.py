@@ -208,7 +208,7 @@ _GLOG = [
 
 def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress, should_cancel: Callable[[], bool]) -> SfmStats:
     proc = subprocess.Popen(
-        [sys.executable, "-m", "splatcast.poses", str(frames_dir), str(work_dir)],
+        [sys.executable, "-m", "threeddd.poses", str(frames_dir), str(work_dir)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
     assert proc.stdout is not None

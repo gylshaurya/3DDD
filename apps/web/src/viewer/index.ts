@@ -1,4 +1,4 @@
-// Splatcast viewer — a from-scratch WebGPU 3D Gaussian Splatting renderer.
+// 3DDD viewer — a from-scratch WebGPU 3D Gaussian Splatting renderer.
 //
 //   const viewer = await createViewer(canvas, { up: 'y-down', autoOrbit: true });
 //   await viewer.load('/samples/train.splat');

@@ -1,4 +1,4 @@
-"""HTTP API. Run: uv run uvicorn splatcast.api:app --host 0.0.0.0 --port 8000"""
+"""HTTP API. Run: uv run uvicorn threeddd.api:app --host 0.0.0.0 --port 8000"""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Splatcast", lifespan=lifespan)
+app = FastAPI(title="3DDD", lifespan=lifespan)
 
 
 def _job(job_id: str):

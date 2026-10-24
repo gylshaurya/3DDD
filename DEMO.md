@@ -1,4 +1,4 @@
-# Splatcast demo playbook
+# 3DDD demo playbook
 
 ## Before you go on stage (10 min)
 

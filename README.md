@@ -1,8 +1,8 @@
-# Splatcast
+# 3DDD
 
 **Film anything with your phone. Walk around inside it a few minutes later.**
 
-Splatcast turns a casual phone video into a photoreal, explorable 3D scene using 3D Gaussian Splatting.
+3DDD turns a casual phone video into a photoreal, explorable 3D scene using 3D Gaussian Splatting.
 It solves the camera pose of every frame, trains several hundred thousand 3D Gaussians on a cloud GPU while
 streaming the half-trained scene to your browser, and renders the result in a WebGPU renderer we wrote ourselves.
 
@@ -68,7 +68,7 @@ doubled and ghosted, to 29.9 dB.
 - *Offline fallback*: Brush (Rust/WebGPU) trains on the Mac's own GPU, and its periodic exports are turned
   into the same live snapshot stream.
 
-**Spending guard** (`server/src/splatcast/budget.py`): before any GPU is requested, the higher of Modal's real
+**Spending guard** (`server/src/threeddd/budget.py`): before any GPU is requested, the higher of Modal's real
 metered cost and a local ledger is checked against a cap (default $15). Each run's worst case is
 *reserved* in the ledger before it starts and settled to the measured cost afterwards, so a crash
 mid-run can't hide spend. The Modal hard timeout is set per call to exactly the reserved time. Runs are
@@ -114,7 +114,7 @@ cd apps/web && node scripts/e2e-job.mjs /tmp/run local preview   # drives the wh
 
 ```
 apps/web/            React + Vite app and the WebGPU renderer (src/viewer)
-server/src/splatcast frames.py · poses.py · cloud.py · local.py · jobs.py · api.py · budget.py · sceneinfo.py
+server/src/threeddd frames.py · poses.py · cloud.py · local.py · jobs.py · api.py · budget.py · sceneinfo.py
 server/modal_app/    trainer.py, the Modal GPU function
 data/                jobs/, scenes/, test-videos/, modal_ledger.json   (git-ignored)
 ```
