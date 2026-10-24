@@ -11,7 +11,12 @@ splat trainers expect.
 from __future__ import annotations
 
 import json
+import queue
+import re
 import shutil
+import subprocess
+import sys
+import threading
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -153,3 +158,88 @@ def export_preview(rec: pycolmap.Reconstruction, out: Path, max_points: int = 60
         "colors": cols.flatten().tolist(),
         "cameras": cams,
     }))
+
+
+# ---- subprocess runner -------------------------------------------------------------------------
+# Running the solve in a child process lets us (a) turn COLMAP's own log lines into fine-grained
+# live progress and (b) cancel instantly by killing the process instead of unwinding native code.
+
+_GLOG = [
+    # (regex on the log line, progress fraction or callable(match) -> fraction, message template)
+    (re.compile(r"Processed file \[(\d+)/(\d+)\]"), lambda m: 0.02 + 0.28 * int(m[1]) / int(m[2]),
+     "Extracting SIFT features {1}/{2}"),
+    (re.compile(r"Features:\s+(\d+)"), None, None),
+    (re.compile(r"Processing image \[(\d+)/(\d+)\]"), lambda m: 0.30 + 0.25 * int(m[1]) / int(m[2]),
+     "Matching image {1}/{2} against its neighbours"),
+    (re.compile(r"=== Running rotation averaging ==="), 0.58, "Rotation averaging: solving every camera's orientation at once"),
+    (re.compile(r"Established (\d+) tracks"), 0.64, "Linked features into {1} 3D tracks"),
+    (re.compile(r"=== Running global positioning ==="), 0.67, "Global positioning: solving all camera centres and points jointly"),
+    (re.compile(r"Global bundle adjustment iteration (\d) / (\d) finished"),
+     lambda m: 0.72 + 0.14 * int(m[1]) / int(m[2]), "Bundle adjustment pass {1}/{2}: refining every pose and point"),
+    (re.compile(r"=== Running iterative retriangulation"), 0.88, "Retriangulating and refining"),
+    (re.compile(r"=== Running incremental"), 0.6, "Falling back to incremental SfM"),
+]
+
+
+def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress, should_cancel: Callable[[], bool]) -> SfmStats:
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "splatcast.poses", str(frames_dir), str(work_dir)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+    )
+    assert proc.stdout is not None
+    lines: queue.Queue[str | None] = queue.Queue()
+
+    def pump() -> None:
+        for line in proc.stdout:  # type: ignore[union-attr]
+            lines.put(line.rstrip("\n"))
+        lines.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+    frac, features, error = 0.0, [], None
+    while True:
+        if should_cancel():
+            proc.kill()
+            proc.wait()
+            progress(frac, "Cancelled")  # the callback raises when cancelled
+        try:
+            line = lines.get(timeout=0.25)
+        except queue.Empty:
+            continue
+        if line is None:
+            break
+        if line.startswith("@@"):
+            kind, _, payload = line[2:].partition(" ")
+            if kind == "PROGRESS":
+                p = json.loads(payload)
+                frac = max(frac, p["frac"])
+                progress(frac, p["msg"])
+            elif kind == "ERROR":
+                error = payload
+            continue
+        for rx, f, msg in _GLOG:
+            m = rx.search(line)
+            if not m:
+                continue
+            if msg is None:
+                features.append(int(m[1]))
+                break
+            frac = max(frac, f(m) if callable(f) else f)
+            text = msg.format(*([m[0]] + list(m.groups())))
+            if features and "Matching" in text and len(features) > 1:
+                text += f" (avg {sum(features) // len(features)} SIFT features/frame)"
+            progress(frac, text)
+            break
+    if proc.wait() != 0:
+        raise RuntimeError(error or f"Camera solve crashed (exit code {proc.returncode})")
+    return SfmStats(**json.loads((work_dir / "sfm_stats.json").read_text()))
+
+
+if __name__ == "__main__":
+    def _report(frac: float, msg: str) -> None:
+        print("@@PROGRESS " + json.dumps({"frac": frac, "msg": msg}), flush=True)
+
+    try:
+        solve_poses(Path(sys.argv[1]), Path(sys.argv[2]), progress=_report)
+    except Exception as e:  # noqa: BLE001 - reported to the parent, which raises it
+        print(f"@@ERROR {e}", flush=True)
+        sys.exit(1)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import re
 import shutil
 import threading
 import time
@@ -22,7 +23,7 @@ from PIL import Image
 from . import budget, cloud, local
 from .config import JOBS_DIR, SCENES_DIR
 from .frames import extract_frames
-from .poses import solve_poses
+from .poses import solve_poses_subprocess
 from .sceneinfo import ply_to_splat, scene_info, sfm_preview_splat, spc_to_ply
 
 STAGES = ["frames", "sfm", "train", "export"]
@@ -182,18 +183,21 @@ class JobManager:
         self._save(job)
 
     def _progress_cb(self, job: Job):
-        last = {"t": 0.0, "msg": None}
+        # Counters like "image 12/150" change constantly: log each *phase* once, and
+        # throttle progress updates so a 150-frame solve doesn't emit 300 events.
+        last = {"t": 0.0, "phase": None}
 
         def cb(frac: float, msg: str) -> None:
             self._check(job)
             now = time.time()
-            if msg != last["msg"]:
+            phase = re.sub(r"\d+", "#", msg)
+            if phase != last["phase"]:
                 self.publish(job, {"type": "log", "msg": msg})
-            if msg != last["msg"] or now - last["t"] > 0.5:
+            if phase != last["phase"] or now - last["t"] > 0.4:
                 job.stage_progress, job.message = frac, msg
                 self.publish(job, {"type": "stage_progress", "stage": job.stage, "progress": frac, "msg": msg})
                 last["t"] = now
-            last["msg"] = msg
+            last["phase"] = phase
 
         return cb
 
@@ -222,7 +226,8 @@ class JobManager:
 
         # 2. camera poses
         self._stage(job, "sfm")
-        stats = solve_poses(d / "frames", d / "sfm", progress=self._progress_cb(job))
+        flag = self.cancel_flags.setdefault(job.id, threading.Event())
+        stats = solve_poses_subprocess(d / "frames", d / "sfm", self._progress_cb(job), flag.is_set)
         info = scene_info(d / "sfm" / "sfm_preview.json")
         (d / "scene.json").write_text(json.dumps(info))
         (d / "sfm_preview.splat").write_bytes(sfm_preview_splat(d / "sfm" / "sfm_preview.json"))
