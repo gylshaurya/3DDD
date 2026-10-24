@@ -44,6 +44,26 @@ def _largest(recs: dict[int, pycolmap.Reconstruction]) -> pycolmap.Reconstructio
     return max(recs.values(), key=lambda r: r.num_reg_images())
 
 
+def make_pairs(names: list[str], window: int = 10, keyframes: int = 15) -> list[tuple[str, str]]:
+    """Which frame pairs to match.
+
+    Video frames only overlap with their neighbours, so exhaustive matching wastes most of its time.
+    But matching *only* neighbours never links the end of a walk-around back to its start, and the
+    reconstruction drifts into a doubled "ghost" scene. So: a sliding window for local accuracy, plus
+    every frame against a set of keyframes spread over the whole capture for loop closure.
+    """
+    n = len(names)
+    out: set[tuple[int, int]] = set()
+    for i in range(n):
+        for j in range(i + 1, min(n, i + window + 1)):
+            out.add((i, j))
+    for k in {round(x) for x in np.linspace(0, n - 1, min(n, keyframes))}:
+        for i in range(n):
+            if abs(i - k) > window:
+                out.add((min(i, k), max(i, k)))
+    return [(names[a], names[b]) for a, b in sorted(out)]
+
+
 def solve_poses(
     frames_dir: Path,
     work_dir: Path,
@@ -69,11 +89,14 @@ def solve_poses(
         reader_options=reader, extraction_options=extraction,
     )
 
-    progress(0.30, "Matching features between neighbouring frames")
-    pairing = pycolmap.SequentialPairingOptions()
-    pairing.overlap = 12
-    pairing.quadratic_overlap = True
-    pycolmap.match_sequential(db, pairing_options=pairing)
+    progress(0.30, "Matching neighbouring frames + loop-closure keyframes")
+    names = sorted(p.name for p in frames_dir.glob("*.jpg"))
+    pairs = make_pairs(names)
+    pair_file = work_dir / "pairs.txt"
+    pair_file.write_text("".join(f"{a} {b}\n" for a, b in pairs))
+    pairing = pycolmap.ImportedPairingOptions()
+    pairing.match_list_path = str(pair_file)
+    pycolmap.match_image_pairs(db, pairing_options=pairing)
 
     progress(0.55, "Solving camera poses (global SfM)")
     sparse = work_dir / "sparse"
@@ -171,6 +194,8 @@ _GLOG = [
     (re.compile(r"Features:\s+(\d+)"), None, None),
     (re.compile(r"Processing image \[(\d+)/(\d+)\]"), lambda m: 0.30 + 0.25 * int(m[1]) / int(m[2]),
      "Matching image {1}/{2} against its neighbours"),
+    (re.compile(r"Matching block \[(\d+)/(\d+)"), lambda m: 0.30 + 0.25 * int(m[1]) / int(m[2]),
+     "Matching image pairs: block {1}/{2}"),
     (re.compile(r"=== Running rotation averaging ==="), 0.58, "Rotation averaging: solving every camera's orientation at once"),
     (re.compile(r"Established (\d+) tracks"), 0.64, "Linked features into {1} 3D tracks"),
     (re.compile(r"=== Running global positioning ==="), 0.67, "Global positioning: solving all camera centres and points jointly"),
