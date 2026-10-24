@@ -17,7 +17,7 @@ export function JobPage({ id }: { id: string }) {
 /** Plays back a finished run exactly as it streamed live (demo insurance against flaky Wi-Fi). */
 export function ReplayPage({ id }: { id: string }) {
   const [run, setRun] = useState(0);
-  const s = useJobReplay(id, 75, run);
+  const s = useJobReplay(id, 70, run);
   return <JobView key={run} id={id} s={s} replay onRestart={() => setRun((r) => r + 1)} />;
 }
 
@@ -344,7 +344,7 @@ function Compares({ s }: { s: JobStreamState }) {
     <div className={`compares panel ${open ? 'open' : ''}`}>
       <button className="compares-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span>
-          <span className="eyebrow">Held-out views</span> real photo <span className="faint">|</span> our render
+          <span className="eyebrow">Unseen views</span> photo <span className="faint">|</span> render
         </span>
         <span className="faint">{open ? 'Hide' : 'Show'}</span>
       </button>

@@ -124,16 +124,40 @@ export function useJobStream(jobId: string | null): JobStreamState {
   return state;
 }
 
+/** Seconds each stage gets in a replay, so every phase of the story is visible. */
+const REPLAY_STAGE_SECONDS: Record<Stage, number> = { frames: 4, sfm: 16, train: 45, export: 4 };
+
 /**
- * Re-plays a finished run from its recorded event log, time-compressed to roughly `seconds`.
- * Dead air (long gaps such as the camera solve) is capped so the story keeps moving.
+ * Maps each recorded event to a replay time: every stage is stretched or squeezed independently to
+ * REPLAY_STAGE_SECONDS (scaled so the whole replay lasts roughly `seconds`).
  */
-export function useJobReplay(jobId: string, seconds = 60, run = 0): JobStreamState {
+export function replaySchedule(events: JobEvent[], seconds: number): number[] {
+  const budget = Object.values(REPLAY_STAGE_SECONDS).reduce((a, b) => a + b, 0);
+  const k = seconds / budget;
+  const starts: { stage: Stage; t: number }[] = [];
+  for (const ev of events) if (ev.type === 'stage') starts.push({ stage: ev.stage, t: ev.t });
+  const end = events[events.length - 1].t;
+  let offset = 0;
+  const segs = starts.map((st, i) => {
+    const realEnd = i + 1 < starts.length ? starts[i + 1].t : end;
+    const seg = { t0: st.t, t1: Math.max(realEnd, st.t + 1e-3), r0: offset, len: REPLAY_STAGE_SECONDS[st.stage] * k };
+    offset += seg.len;
+    return seg;
+  });
+  return events.map((ev) => {
+    const seg = segs.findLast((x) => ev.t >= x.t0);
+    if (!seg) return 0;
+    return seg.r0 + (Math.min(ev.t, seg.t1) - seg.t0) / (seg.t1 - seg.t0) * seg.len;
+  });
+}
+
+/** Re-plays a finished run from its recorded event log, paced by `replaySchedule`. */
+export function useJobReplay(jobId: string, seconds = 70, run = 0): JobStreamState {
   const [state, dispatch] = useReducer(reduce, initial);
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timers: ReturnType<typeof setTimeout>[] = [];
     dispatch({ kind: 'reset' });
     fetch(`/files/jobs/${jobId}/events.jsonl`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('No recording for this run'))))
@@ -143,24 +167,14 @@ export function useJobReplay(jobId: string, seconds = 60, run = 0): JobStreamSta
           .filter(Boolean)
           .map((l) => JSON.parse(l) as JobEvent);
         if (!events.length || cancelled) return;
-        const span = events[events.length - 1].t - events[0].t;
-        const speed = Math.max(1, span / seconds);
+        const at = replaySchedule(events, seconds);
         dispatch({ kind: 'event', ev: { type: 'replay_done' } });
-        let i = 0;
-        const step = () => {
-          if (cancelled) return;
-          dispatch({ kind: 'event', ev: events[i] });
-          i++;
-          if (i >= events.length) return;
-          const gap = (events[i].t - events[i - 1].t) / speed;
-          timer = setTimeout(step, Math.min(gap, 1.2) * 1000);
-        };
-        step();
+        events.forEach((ev, i) => timers.push(setTimeout(() => !cancelled && dispatch({ kind: 'event', ev }), at[i] * 1000)));
       })
       .catch(() => dispatch({ kind: 'lost' }));
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
     };
   }, [jobId, seconds, run]);
 
