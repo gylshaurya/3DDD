@@ -161,10 +161,16 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
         )}
         {samples.length > 0 && (
           <div className="samples">
-            <span className="faint">No video handy?</span>
+            <span className="faint">No video handy? Try a sample:</span>
             {samples.map((s) => (
-              <button key={s} className="btn small" disabled={upload !== null} onClick={() => void start({ sample: s })}>
-                Run sample “{s}”
+              <button
+                key={s}
+                className="btn small"
+                disabled={upload !== null}
+                onClick={() => void start({ sample: s })}
+                aria-label={`Run sample ${s}`}
+              >
+                {s}
               </button>
             ))}
           </div>

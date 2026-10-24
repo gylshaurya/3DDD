@@ -15,16 +15,26 @@ phone video ──► sharp-frame selection ──► structure-from-motion ─�
 
 ## Measured results
 
-The test capture is the 240-frame "counter" scene from Mip-NeRF 360, re-encoded as a 30 s, 1080p video.
+Test captures are Mip-NeRF 360 scenes, each re-encoded from its photos into a 1080p "phone video" and run
+through the full pipeline. PSNR is measured on held-out views, i.e. every 10th frame, never trained on.
+
+| Scene | Preset · GPU | Gaussians | Held-out PSNR | Video → 3D |
+|---|---|---|---|---|
+| Bonsai | quality · L40S | 1.0M | **30.7 dB** | 9m 15s |
+| Lego bulldozer (kitchen) | quality · L40S | 1.0M | **29.9 dB** | 9m 39s |
+| Garden table | quality · L40S | 1.0M | **27.2 dB** | 7m 23s |
+| Counter | fast · L40S | 570k | **26.7 dB** | **3m 46s** |
 
 | | |
 |---|---|
-| Video → finished 3D scene (Modal L40S, *fast*) | **3 min 46 s** end to end |
-| Camera solve (M4 MacBook, CPU) | 150/150 cameras registered, 0.48 px mean reprojection error, ~85 s |
-| Training (7,000 steps, L40S) | ~93 s, 570k Gaussians |
-| Quality on held-out views (never trained on) | **26.7 dB PSNR** |
-| Viewer (M4, 1440×900, 570k splats, SH degree 3) | **60 fps**, GPU radix sort 1.2 ms/frame |
+| Camera solve (M4 MacBook, CPU) | 150/150 cameras registered on every scene, 0.3–0.5 px mean reprojection error, ~1.5–3 min |
+| Training throughput (L40S) | 60–110 iterations/s; 7,000 steps in ~93 s |
+| Viewer (M4, 1280×800) | **60 fps** with 1M splats at SH degree 3; GPU radix sort 1–2 ms/frame |
 | Offline path (Brush on the M4's GPU, *preview*) | ~5 min end to end, no internet |
+| Cost | ~$0.15 (fast) to ~$0.35 (quality) of GPU time per scene |
+
+The loop-closure pairing (below) lifted the kitchen scene from 25.5 dB, where the reconstruction was
+doubled and ghosted, to 29.9 dB.
 
 ## What's technically interesting
 
@@ -42,8 +52,12 @@ The test capture is the 240-frame "counter" scene from Mip-NeRF 360, re-encoded 
 **The pipeline** (`server/`):
 - *Frame selection*: the video is over-sampled 3×. Each frame is scored by variance of the Laplacian (blur),
   and the sharpest frame in each time bin is kept.
-- *Camera solve*: pycolmap SIFT → sequential and quadratic matching → **GLOMAP global SfM**, with an
-  incremental-SfM fallback → undistortion to a pinhole camera model.
+- *Camera solve*: pycolmap SIFT → **window + keyframe loop-closure pairing** → **GLOMAP global SfM**, with an
+  incremental-SfM fallback → undistortion to a pinhole camera model. Each frame is matched against its 10
+  neighbours plus 15 keyframes spread across the capture. That links the end of a walk-around back to its
+  start (without it, drift produces a doubled "ghost" scene) at about 3,300 pairs, compared with 11,000 for
+  exhaustive matching. The solve runs in a subprocess: COLMAP's own log lines drive the live progress UI, and
+  cancelling is an instant kill.
 - *Gravity and framing*: the world "up" is the mean camera up vector. The look-at target is the
   least-squares intersection of all view rays, so scenes open level and centred.
 - *Training* (`server/modal_app/trainer.py`): our own loop on gsplat's CUDA rasterizer. It uses
@@ -55,9 +69,15 @@ The test capture is the 240-frame "counter" scene from Mip-NeRF 360, re-encoded 
   into the same live snapshot stream.
 
 **Spending guard** (`server/src/splatcast/budget.py`): before any GPU is requested, the higher of Modal's real
-metered cost and a local ledger is checked against a cap (default $15). Runs are limited to one GPU
-at a time, with hard timeouts, a 10 s scale-down, and cancellation relayed to the GPU through a
-`modal.Dict`.
+metered cost and a local ledger is checked against a cap (default $15). Each run's worst case is
+*reserved* in the ledger before it starts and settled to the measured cost afterwards, so a crash
+mid-run can't hide spend. The Modal hard timeout is set per call to exactly the reserved time. Runs are
+limited to one GPU at a time with a 10 s scale-down, and cancellation is relayed to the GPU through a
+`modal.Dict`. Orphaned runs are cancelled when the server restarts.
+
+**Replay** (`#/replay/<job>`): every run's event log and snapshots are kept, so a finished run can be
+replayed exactly as it streamed live, time-warped so each stage gets screen time. It's insurance against
+venue Wi-Fi.
 
 ## Running it
 

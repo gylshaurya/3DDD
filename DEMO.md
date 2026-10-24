@@ -7,8 +7,9 @@
 3. Check the **GPU budget** badge (top right). It should be well under the cap.
 4. **Warm up Modal**: run the sample once with *Preview · L4* (about $0.03). This makes sure the token works
    and the GPU image is cached. Delete the result from its scene page afterwards if you like.
-5. Open the replay of your best recorded run in a second tab (`#/replay/<job-id>`, linked from any finished
-   job page). That's your fallback if the venue Wi-Fi fails.
+5. Open a replay in a second tab: **http://localhost:8000/#/replay/1025-014849-4bfe** (the Bonsai run,
+   30.7 dB). Every finished job page also has a "Replay training" button. That's your fallback if the venue
+   Wi-Fi fails.
 6. Phone upload only works if the phone and laptop are on the same network and the venue Wi-Fi doesn't
    isolate clients. Test it once. If it fails, AirDrop the video to the laptop and drag it onto the page.
 
@@ -17,7 +18,7 @@
 | Time | Say | Do |
 |---|---|---|
 | 0:00 | "Photos are flat. What if a 30-second phone video gave you a place you can walk around inside?" | Home page, hero scene orbiting behind you |
-| 0:15 | "Let me show you, live." | Drop the video (or scan the QR and film the judges' table) · *Fast · L40S* |
+| 0:15 | "Let me show you, live." | Drop the video (or scan the QR and film the judges' table) · *Fast · L40S* (no video? click a sample: counter is the fastest) |
 | 0:25 | "First we pick the sharpest frames. Motion blur is the main thing that breaks 3D reconstruction." | Contact sheet appears |
 | 0:35 | "Now we solve where the phone was for every single frame: SIFT features, matching, then a global structure-from-motion solver." | Point at the timeline and log |
 | 1:30 | "Each gold pyramid is a phone position we recovered. Sub-pixel accuracy." | The SfM view with gold frustums |
@@ -65,6 +66,12 @@ blow up memory. The MCMC variant treats Gaussians as samples. It "teleports" dea
 they're needed and grows up to a hard cap, so memory and runtime stay predictable. That matters for a live
 demo.
 
+**How do you handle drift when walking around an object?**
+Matching only neighbouring frames lets small errors accumulate around the loop, so the end of the walk
+doesn't line up with the start and you get a doubled "ghost" object. We match every frame against its
+neighbours *and* against 15 keyframes spread across the whole capture, which closes the loop. On the kitchen
+scene that took held-out PSNR from 25.5 to 29.9 dB.
+
 **What does 26.7 dB PSNR mean?**
 PSNR measures how closely our render matches the real photo, pixel by pixel. We hold out every 10th frame, never
 train on it, and score renders from exactly those viewpoints. Around 27 dB after 90 seconds of training is a
@@ -75,4 +82,4 @@ Mirrors, glass and shiny surfaces (they look different from every angle). Moving
 walls (nothing for SIFT to match). Fast motion blur. Regions the camera never saw.
 
 **Cost?**
-About $0.15 of GPU time per scene on an L40S. A hard budget guard checks real Modal billing before any GPU starts.
+About $0.15 (fast) to $0.35 (quality) of GPU time per scene on an L40S. A hard budget guard checks real Modal billing before any GPU starts.
