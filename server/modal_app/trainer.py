@@ -156,6 +156,15 @@ def _train(payload: dict, cfg: dict):
     scene_scale = float((cam_centers - cam_centers.mean(0)).norm(dim=1).max() * 1.1)
     yield {"type": "status", "msg": f"{n} views at {W}x{H}, {len(pts)} SfM points, scene scale {scene_scale:.2f}"}
 
+    # MCMC grows the Gaussian count ~5% per refinement, so a sparse SfM cloud would never reach the
+    # cap within the step budget. Seed extra Gaussians around existing points up to cap/10.
+    min_init = int(cfg.get("min_init", cap // 10))
+    if 0 < len(pts) < min_init:
+        reps = -(-min_init // len(pts)) - 1
+        spread = _knn_scale(pts).repeat(reps)[:, None] * 0.5
+        pts = torch.cat([pts, pts.repeat(reps, 1) + torch.randn(len(pts) * reps, 3, device=dev) * spread])
+        cols = torch.cat([cols, cols.repeat(reps, 1)])
+
     # ---- init ------------------------------------------------------------------------------
     N = len(pts)
     C0 = 0.28209479177387814  # SH band-0 constant
