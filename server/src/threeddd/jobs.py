@@ -7,6 +7,7 @@ or reconnects, replays the whole story) and pushed to live subscribers.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import queue
 import re
@@ -21,9 +22,10 @@ from pathlib import Path
 from PIL import Image
 
 from . import budget, cloud, local
-from .config import JOBS_DIR, SCENES_DIR
+from .config import JOBS_DIR, REMOTE_SFM, SCENES_DIR, persist
 from .frames import extract_frames
 from .poses import solve_poses_subprocess
+from .remote import solve_poses_remote
 from .sceneinfo import ply_to_splat, scene_info, sfm_preview_splat, spc_to_ply
 
 STAGES = ["frames", "sfm", "train", "export"]
@@ -47,13 +49,20 @@ class Job:
     metrics: dict = field(default_factory=dict)
     scene: dict | None = None
     timings: dict = field(default_factory=dict)
+    featured: bool = False  # shown in the public gallery
+    owner_hash: str | None = None  # sha256 of the uploader's private token (hosted mode)
 
     @property
     def dir(self) -> Path:
         return JOBS_DIR / self.id
 
     def public(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("owner_hash")
+        return d
+
+    def owned_by(self, token: str | None) -> bool:
+        return bool(token) and self.owner_hash == hashlib.sha256(token.encode()).hexdigest()
 
 
 class JobManager:
@@ -126,7 +135,8 @@ class JobManager:
             self.publish(job, {"type": "job", "job": job.public()})
 
     # ---- public API --------------------------------------------------------------------------
-    def create(self, video: Path, name: str, backend: str, preset: str, gpu: str) -> Job:
+    def create(self, video: Path, name: str, backend: str, preset: str, gpu: str,
+               owner_token: str | None = None) -> Job:
         if backend == "local" and not local.available():
             raise ValueError("Local Brush trainer is not installed")
         if preset not in cloud.PRESETS:
@@ -134,13 +144,15 @@ class JobManager:
         if backend == "modal" and gpu not in budget.GPU_RATES:
             raise ValueError(f"Unknown GPU {gpu}")
         job = Job(id=time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4], name=name or "Untitled scene",
-                  backend=backend, preset=preset, gpu=gpu, created=time.time())
+                  backend=backend, preset=preset, gpu=gpu, created=time.time(),
+                  owner_hash=hashlib.sha256(owner_token.encode()).hexdigest() if owner_token else None)
         job.dir.mkdir(parents=True)
         shutil.move(str(video), job.dir / ("input" + (video.suffix or ".mp4")))
         self.jobs[job.id] = job
         self.history[job.id] = []
         self.cancel_flags[job.id] = threading.Event()
         self._update(job, message="Queued")
+        persist()
         self.queue.put(job.id)
         return job
 
@@ -158,6 +170,7 @@ class JobManager:
         self.cancel_flags.get(job_id, threading.Event()).set()
         shutil.rmtree(job.dir, ignore_errors=True)
         shutil.rmtree(SCENES_DIR / job_id, ignore_errors=True)
+        persist()
 
     # ---- pipeline ----------------------------------------------------------------------------
     def _worker(self) -> None:
@@ -174,6 +187,11 @@ class JobManager:
                 traceback.print_exc()
                 self.publish(job, {"type": "log", "level": "error", "msg": str(e)})
                 self._update(job, status="failed", error=str(e), message="Failed")
+            finally:
+                persist()
+
+    def queued_count(self) -> int:
+        return sum(j.status == "queued" for j in list(self.jobs.values()))
 
     def _check(self, job: Job) -> None:
         if self.cancel_flags.get(job.id, threading.Event()).is_set():
@@ -237,7 +255,8 @@ class JobManager:
         # 2. camera poses
         self._stage(job, "sfm")
         flag = self.cancel_flags.setdefault(job.id, threading.Event())
-        stats = solve_poses_subprocess(d / "frames", d / "sfm", self._progress_cb(job), flag.is_set)
+        solve = solve_poses_remote if REMOTE_SFM else solve_poses_subprocess
+        stats = solve(d / "frames", d / "sfm", self._progress_cb(job), flag.is_set)
         info = scene_info(d / "sfm" / "sfm_preview.json")
         (d / "scene.json").write_text(json.dumps(info), encoding="utf-8")
         (d / "sfm_preview.splat").write_bytes(sfm_preview_splat(d / "sfm" / "sfm_preview.json"))
