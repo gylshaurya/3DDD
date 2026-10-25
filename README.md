@@ -29,9 +29,9 @@ through the full pipeline. PSNR is measured on held-out views, i.e. every 10th f
 
 | | |
 |---|---|
-| Camera solve (M4 MacBook, CPU) | 150/150 cameras registered on every scene, 0.3–0.5 px mean reprojection error, ~1.5–3 min |
-| Training throughput (L40S) | 60–110 iterations/s; 7,000 steps in ~93 s |
-| Viewer (M4, 1280×800) | **60 fps** with 1M splats at SH degree 3; GPU radix sort 1–2 ms/frame |
+| Camera solve (M4 MacBook, CPU) | 150/150 cameras registered on every scene, 0.3-0.5 px mean reprojection error, ~1.5-3 min |
+| Training throughput (L40S) | 60-110 iterations/s; 7,000 steps in ~93 s |
+| Viewer (M4, 1280×800) | **60 fps** with 1M splats at SH degree 3; GPU radix sort 1-2 ms/frame |
 | Offline path (Brush on the M4's GPU, *preview*) | ~5 min end to end, no internet |
 | Cost | ~$0.15 (fast) to ~$0.35 (quality) of GPU time per scene |
 

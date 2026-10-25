@@ -31,7 +31,7 @@ const initial: JobStreamState = {
   sfm: null, snapshot: null, snapshotCount: 0, compares: [], final: null, connectionLost: false,
 };
 
-/** Server events carry server-relative file paths; resolve them against the API origin. */
+/** Make file URLs in events absolute. */
 function resolveUrls(ev: JobEvent): JobEvent {
   switch (ev.type) {
     case 'thumb':
@@ -99,7 +99,7 @@ function reduce(s: JobStreamState, a: Action): JobStreamState {
   }
 }
 
-/** Subscribes to /api/jobs/:id/events (SSE). Replays history, then streams live; auto-reconnects. */
+/** Live job events over SSE. Reconnects and resumes after the last event received. */
 export function useJobStream(jobId: string | null): JobStreamState {
   const [state, dispatch] = useReducer(reduce, initial);
 
@@ -126,12 +126,11 @@ export function useJobStream(jobId: string | null): JobStreamState {
         if (ev.type === 'job' && ['done', 'failed', 'cancelled'].includes(ev.job.status)) finished = true;
         dispatch({ kind: 'event', ev: resolveUrls(ev) });
       };
-      // The server ends each stream after ~100 s (hosting proxies cap request length), and networks
-      // drop; either way, resume exactly where we left off.
+      // The server closes each stream after 100 s, so reconnect and continue.
       es.onerror = () => {
         es?.close();
         if (closed || finished) return;
-        // Routine stream rotation reconnects in under a second; only surface real outages.
+        // Only show the reconnect message if it takes more than 3 s.
         clearTimeout(lostToast);
         lostToast = setTimeout(() => dispatch({ kind: 'lost' }), 3000);
         retry = setTimeout(connect, 800);
@@ -144,19 +143,15 @@ export function useJobStream(jobId: string | null): JobStreamState {
       clearTimeout(lostToast);
       es?.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
   return state;
 }
 
-/** Seconds each stage gets in a replay, so every phase of the story is visible. */
+/** Seconds each stage gets in a replay. */
 const REPLAY_STAGE_SECONDS: Record<Stage, number> = { frames: 4, sfm: 16, train: 45, export: 4 };
 
-/**
- * Maps each recorded event to a replay time: every stage is stretched or squeezed independently to
- * REPLAY_STAGE_SECONDS (scaled so the whole replay lasts roughly `seconds`).
- */
+/** Replay time for each event. Each stage is scaled to its REPLAY_STAGE_SECONDS share. */
 export function replaySchedule(events: JobEvent[], seconds: number): number[] {
   const budget = Object.values(REPLAY_STAGE_SECONDS).reduce((a, b) => a + b, 0);
   const k = seconds / budget;
@@ -177,7 +172,7 @@ export function replaySchedule(events: JobEvent[], seconds: number): number[] {
   });
 }
 
-/** Re-plays a finished run from its recorded event log, paced by `replaySchedule`. */
+/** Replays a finished run from its saved event log. */
 export function useJobReplay(jobId: string, seconds = 70, run = 0): JobStreamState {
   const [state, dispatch] = useReducer(reduce, initial);
 

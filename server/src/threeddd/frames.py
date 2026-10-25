@@ -1,10 +1,7 @@
-"""Stage 1: turn a phone video into a small set of sharp, well-spaced frames.
+"""Stage 1: pick sharp, evenly spaced frames from the video.
 
-We over-sample the video (~3x the target count), score every candidate with the
-variance of the Laplacian (a cheap blur metric), then split the timeline into
-`target` equal bins and keep the sharpest frame from each bin. This keeps
-temporal coverage uniform while rejecting motion-blurred frames, which are the
-#1 cause of failed camera solves on handheld footage.
+The video is split into equal time slices and the sharpest frame in each slice is kept.
+Sharpness is the variance of the Laplacian (blurry frames score low).
 """
 
 from __future__ import annotations
@@ -117,7 +114,7 @@ def extract_frames(
                     pass
         finished = True
     finally:
-        if not finished:  # progress() raised (e.g. cancellation): don't leave ffmpeg running
+        if not finished:  # cancelled, stop ffmpeg
             proc.kill()
             proc.wait()
     if proc.wait() != 0:

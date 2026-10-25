@@ -134,7 +134,7 @@ test.describe('rendering', () => {
     const fromMinusX = await center([-2, 0, -2]);
     const front = await center([0, 0, -2.8]);
     console.log('SH colors', { fromPlusX, fromMinusX, front });
-    // coefficient (+0.8, 0, −0.8) on the −C1·x basis: ±0.8·C1·sin(45°)·255 ≈ ±70
+    // coefficient (+0.8, 0, -0.8) on the -C1*x basis: +/-0.8*C1*sin(45 deg)*255 ~ +/-70
     expect(fromPlusX[0] - fromPlusX[2]).toBeGreaterThan(100);
     expect(fromMinusX[2] - fromMinusX[0]).toBeGreaterThan(100);
     expect(Math.abs(front[0] - front[2])).toBeLessThan(6);

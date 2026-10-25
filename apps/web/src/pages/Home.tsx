@@ -15,7 +15,7 @@ export function Home() {
     let id: ReturnType<typeof setInterval> | undefined;
     api.health().then((h) => {
       setHealth(h);
-      // Hosted: the gallery is the featured scenes; your own uploads are tracked in this browser.
+      // On the hosted site the gallery shows featured scenes, and your uploads come from this browser.
       const ids = h.public ? myJobs().map((j) => j.id) : undefined;
       api.scenes().then(setScenes, () => {});
       if (ids?.length) api.scenes(ids).then((s) => setMine(s.filter((x) => !x.featured)), () => {});
@@ -27,7 +27,7 @@ export function Home() {
   }, []);
   const localAvailable = !!health?.local_trainer;
 
-  // Feature the best-looking capture: highest PSNR on held-out views, else the newest.
+  // Show the scene with the best held-out PSNR.
   const hero = scenes.reduce<SceneSummary | undefined>(
     (best, s) => ((s.metrics.train?.test_psnr ?? 0) > (best?.metrics.train?.test_psnr ?? 0) ? s : best),
     scenes[0],

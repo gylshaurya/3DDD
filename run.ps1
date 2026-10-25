@@ -1,4 +1,4 @@
-# 3DDD — build the web app and serve everything from one port (default 8000). Windows (PowerShell).
+# 3DDD: build the web app and serve everything from one port (default 8000). Windows (PowerShell).
 #   powershell -ExecutionPolicy Bypass -File .\run.ps1          http://localhost:8000
 #   powershell -ExecutionPolicy Bypass -File .\run.ps1 -Dev     API on :8000 + Vite on :5280
 param([switch]$Dev, [int]$Port = 8000)

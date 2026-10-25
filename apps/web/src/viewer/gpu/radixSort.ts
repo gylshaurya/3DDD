@@ -58,7 +58,7 @@ interface ScanLevel {
 /**
  * GPU LSD radix sort of (u32 key, u32 value) pairs. The element count is read on the GPU
  * from ctrl[0]; ctrl must hold valid indirect dispatch args at CTRL.dispatch
- * (x = ceil(count / 1024)) before `encode` runs — see `prepareWGSL` in the renderer.
+ * (x = ceil(count / 1024)) before `encode` runs (see `prepareWGSL` in the renderer).
  *
  * After an even number of passes the sorted result is back in keysA / valsA.
  */

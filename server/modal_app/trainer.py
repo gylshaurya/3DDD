@@ -1,14 +1,7 @@
-"""3DDD cloud trainer: 3D Gaussian Splatting on a Modal GPU.
+"""3DDD cloud trainer: Gaussian Splatting on a Modal GPU, built on gsplat.
 
-Our own training loop on top of gsplat's CUDA rasterizer:
-  * SfM-point initialisation (k-NN scale init, SH0 colour init)
-  * MCMC densification (Kheradmand et al. 2024) with a hard Gaussian cap, so
-    memory, file size and runtime are bounded for a live demo
-  * L1 + D-SSIM loss, opacity/scale regularisers, progressive SH degree
-  * Streams progress + live .splat snapshots back to the caller as a generator,
-    then the final full-SH .ply in chunks.
-
-Deploy:  modal deploy server/modal_app/trainer.py
+Streams progress and live snapshots back while training.
+Deploy with: modal deploy server/modal_app/trainer.py
 """
 
 from __future__ import annotations
@@ -29,8 +22,7 @@ image = (
     .pip_install("numpy<2", "pillow", "jaxtyping", "rich", "ninja", "packaging")
 )
 
-# The heavy lifting happens in _train; the decorated function is a thin generator wrapper.
-# max_containers=1 + timeout are part of the budget guard: one GPU at a time, never runaway.
+# One GPU at a time, with a hard timeout.
 
 
 @app.function(image=image, gpu="L4", timeout=25 * 60, max_containers=1, scaledown_window=10)
@@ -87,11 +79,10 @@ def _knn_scale(pts, k: int = 3, chunk: int = 2048):
 
 
 def _pack(params) -> bytes:
-    """Compact transfer format (~3x smaller than PLY); unpacked to a standard PLY by the client.
+    """Pack the trained scene about 3x smaller than a PLY for the download.
 
-    Header: b"SPC1", N:u32, K:u32 (SH rest coeffs per channel); then means f32[N,3],
-    log-scales f16[N,3], quats f16[N,4], opacity-logits f16[N], sh0 f16[N,3],
-    shN min f32[K*3], shN max f32[K*3], shN u8[N,K*3] (per-coefficient min/max quantised).
+    Layout: b"SPC1", N u32, K u32, means f32[N,3], log-scales f16[N,3], quats f16[N,4],
+    opacities f16[N], sh0 f16[N,3], shN min/max f32[K*3] each, shN u8[N,K*3].
     """
     import struct
 
@@ -156,8 +147,7 @@ def _train(payload: dict, cfg: dict):
     scene_scale = float((cam_centers - cam_centers.mean(0)).norm(dim=1).max() * 1.1)
     yield {"type": "status", "msg": f"{n} views at {W}x{H}, {len(pts)} SfM points, scene scale {scene_scale:.2f}"}
 
-    # MCMC grows the Gaussian count ~5% per refinement, so a sparse SfM cloud would never reach the
-    # cap within the step budget. Seed extra Gaussians around existing points up to cap/10.
+    # MCMC grows the count by about 5% per step, so start from at least cap/10 points.
     min_init = int(cfg.get("min_init", cap // 10))
     if 0 < len(pts) < min_init:
         reps = -(-min_init // len(pts)) - 1
@@ -165,7 +155,6 @@ def _train(payload: dict, cfg: dict):
         pts = torch.cat([pts, pts.repeat(reps, 1) + torch.randn(len(pts) * reps, 3, device=dev) * spread])
         cols = torch.cat([cols, cols.repeat(reps, 1)])
 
-    # ---- init ------------------------------------------------------------------------------
     N = len(pts)
     C0 = 0.28209479177387814  # SH band-0 constant
     params = torch.nn.ParameterDict({
@@ -214,7 +203,6 @@ def _train(payload: dict, cfg: dict):
 
     yield {"type": "status", "msg": f"Initialised {N} Gaussians; training {steps} steps (cap {cap:,})"}
 
-    # ---- train -----------------------------------------------------------------------------
     order: list[int] = []
     last_snap, ema_loss, ema_psnr = 0.0, None, None
     t_train = time.time()
@@ -259,13 +247,12 @@ def _train(payload: dict, cfg: dict):
             yield {"type": "status", "msg": f"Time budget reached at step {step + 1}; exporting"}
             break
 
-    # ---- export ----------------------------------------------------------------------------
     metrics = {"steps": step + 1, "gaussians": len(params["means"]), "train_psnr": round(ema_psnr or 0, 2),
                "train_seconds": round(time.time() - t_train, 1)}
     if test_ids:
         metrics["test_psnr"] = round(psnr_of(test_ids), 2)
     yield {"type": "metrics", **metrics}
-    # Side-by-side (photo | render) comparisons on views the model never trained on, when available.
+    # Photo and render side by side for held-out views.
     compare_ids = (test_ids or train_ids)[:: max(1, len(test_ids or train_ids) // 4)][:4]
     with torch.no_grad():
         for i in compare_ids:

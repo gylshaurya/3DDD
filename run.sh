@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 3DDD — build the web app and serve everything from one port (default 8000). macOS and Linux.
+# 3DDD: build the web app and serve everything from one port (default 8000). macOS and Linux.
 #   ./run.sh            production-style: http://localhost:8000  (phones on the same Wi-Fi: http://<lan-ip>:8000/capture)
 #   ./run.sh --dev      hot-reload: API on :8000 + Vite on :5280
 # Windows: use run.ps1

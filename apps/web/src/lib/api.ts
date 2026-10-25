@@ -1,9 +1,9 @@
 // Typed client for the 3DDD server (server/src/threeddd/api.py).
 
-/** API origin. Empty = same origin (local ./run.sh); set VITE_API_BASE for the hosted site. */
+/** API origin. Empty means same origin; the hosted site sets VITE_API_BASE. */
 export const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) ?? '').replace(/\/$/, '');
 
-/** Resolve a server path ("/api/...", "/files/...") against the API origin. */
+/** Prefix a server path with the API origin. */
 export const u = (path: string): string => (path.startsWith('/') ? API_BASE + path : path);
 
 export type Vec3 = [number, number, number];
@@ -115,12 +115,12 @@ async function json<T>(res: Response): Promise<T> {
 export interface Health {
   ok: boolean;
   local_trainer: boolean;
-  /** Hosted deployment: anyone can upload, with limits. */
+  /** True on the hosted site. */
   public: boolean;
   limits: { max_upload_mb: number; max_video_seconds: number; presets: Preset[]; gpus: string[]; jobs_per_ip_per_hour: number } | null;
 }
 
-// ---- captures this browser started (hosted mode keeps strangers' uploads private) ----------
+// Jobs started from this browser, with their owner tokens.
 const MINE_KEY = 'threeddd.myJobs';
 interface MyJob {
   id: string;
@@ -158,7 +158,7 @@ const ownerHeaders = (id: string): HeadersInit => {
   return t ? { 'x-owner-token': t } : {};
 };
 
-/** Absolutise server-relative file URLs so the hosted site can load them from the API origin. */
+/** Make file URLs absolute so they load from the API origin. */
 function withUrls<T extends SceneSummary>(s: T): T {
   return { ...s, ply: u(s.ply), splat: u(s.splat), thumb: u(s.thumb) };
 }
@@ -228,7 +228,7 @@ export function createJob(
 }
 
 export function formatSeconds(s: number | undefined | null): string {
-  if (s == null || !Number.isFinite(s)) return '—';
+  if (s == null || !Number.isFinite(s)) return '-';
   if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`;
   const m = Math.floor(s / 60);
   return `${m}m ${Math.round(s - m * 60).toString().padStart(2, '0')}s`;

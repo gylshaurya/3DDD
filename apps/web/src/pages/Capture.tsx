@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Logo } from '../components/Chrome';
 import { api, createJob, type Preset } from '../lib/api';
 
-/** Phone-first page reached via the QR code: record → upload → watch it train. */
+/** Phone page opened from the QR code: record, upload, then watch it train. */
 export function Capture() {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -33,7 +33,7 @@ export function Capture() {
       <ol className="tips">
         <li>Pick one subject: a person, a plant, a shoe, a statue.</li>
         <li>Walk slowly all the way around it, keeping it in the centre of the frame.</li>
-        <li>Keep it steady and well lit. 20–60 seconds is plenty.</li>
+        <li>Keep it steady and well lit. 20-60 seconds is plenty.</li>
       </ol>
       <div className="seg">
         {presets.map((p) => (

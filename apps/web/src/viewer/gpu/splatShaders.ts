@@ -5,7 +5,7 @@ export const UNIFORM_BYTES = 128;
 
 const uniformsWGSL = /* wgsl */ `
 struct Uniforms {
-  view: mat4x4<f32>,      // world → camera (x right, y down, z forward)
+  view: mat4x4<f32>,      // world -> camera (x right, y down, z forward)
   camPos: vec4<f32>,      // world-space eye
   focal: vec2<f32>,       // fx, fy in pixels
   viewport: vec2<f32>,    // width, height in pixels
@@ -70,7 +70,7 @@ ${words(12, 22)}
  *
  * projected record (8 × u32):
  *   [0..1] center NDC (f32x2)  [2] axis1 px (f16x2)  [3] axis2 px (f16x2)
- *   [4] rgb.rg (f16x2)  [5] rgb.b, alpha (f16x2)  [6] cutoff radius in sigmas (f32)  [7] —
+ *   [4] rgb.rg (f16x2)  [5] rgb.b, alpha (f16x2)  [6] cutoff radius in sigmas (f32)  [7] unused
  */
 export const preprocessWGSL = /* wgsl */ `
 ${uniformsWGSL}
@@ -156,7 +156,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
   let bb = cov[0][1];
   let c = cov[1][1] + 0.3;
 
-  // eigen-decomposition → oriented quad axes
+  // eigen-decomposition -> oriented quad axes
   let mid = 0.5 * (a + c);
   let rad = length(vec2<f32>(0.5 * (a - c), bb));
   let l1 = mid + rad;
@@ -233,7 +233,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let ax2 = unpack2x16float(projected[o + 3u]);
   let center = vec2<f32>(bitcast<f32>(projected[o]), bitcast<f32>(projected[o + 1u]));
   let offPx = corner.x * ax1 + corner.y * ax2;
-  // pixel offsets → NDC (screen y is down, NDC y is up)
+  // pixel offsets -> NDC (screen y is down, NDC y is up)
   let offNdc = vec2<f32>(offPx.x, -offPx.y) * 2.0 / u.viewport;
   out.pos = vec4<f32>(center + offNdc, 0.0, 1.0);
   let cutoff = bitcast<f32>(projected[o + 6u]);

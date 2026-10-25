@@ -4,7 +4,7 @@ export interface SceneBounds {
   center: Vec3;
   /** Radius that contains the bulk (~80%) of the visible splats. */
   radius: number;
-  /** Median splat distance from the center — what auto-framing uses. Captures include a lot of
+  /** Median splat distance from the center, used by auto-framing. Captures include a lot of
    *  background, so framing the median keeps the subject (not the horizon) in view. */
   focusRadius: number;
   /** Point auto-framing orbits around (the dense core for indoor scenes, else `center`). */
@@ -22,7 +22,7 @@ function percentile(sorted: Float32Array, p: number): number {
 
 /**
  * Robust bounds from (x, y, z, opacity) samples. Splat scenes have far-away floaters and
- * background splats, so min/max is useless — use medians and percentiles of reasonably
+ * background splats, so min/max is useless. Use medians and percentiles of reasonably
  * opaque splats instead.
  */
 export function computeBounds(samples: Float32Array): SceneBounds | null {
@@ -59,7 +59,7 @@ export function computeBounds(samples: Float32Array): SceneBounds | null {
   let focusCenter = center;
   let focusRadius: number;
   if (r05 / r50 < 0.25) {
-    // Dense core inside a distant shell (indoor 360° capture): frame the core from inside the room.
+    // Dense core inside a distant shell (indoor 360 deg capture): frame the core from inside the room.
     const core: number[][] = [[], [], []];
     const r10 = percentile(dist, 0.1);
     j = 0;
@@ -105,7 +105,7 @@ function eigenSym3(c: number[][]): { value: number; vector: Vec3 }[] {
 /**
  * Guess the scene's up vector. Most captures are dominated by a ground / floor / tabletop plane,
  * whose normal is the direction of least variance. COLMAP worlds are only roughly y-down, so
- * we accept the PCA axis when it is clearly the flattest and within ~45° of the y axis, and
+ * we accept the PCA axis when it is clearly the flattest and within ~45 deg of the y axis, and
  * otherwise fall back to −y.
  */
 export function estimateUp(samples: Float32Array, bounds: SceneBounds): Vec3 {

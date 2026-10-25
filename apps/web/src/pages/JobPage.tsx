@@ -14,7 +14,7 @@ export function JobPage({ id }: { id: string }) {
   return <JobView id={id} s={s} />;
 }
 
-/** Plays back a finished run exactly as it streamed live (demo insurance against flaky Wi-Fi). */
+/** Plays back a finished run the way it streamed live. */
 export function ReplayPage({ id }: { id: string }) {
   const [run, setRun] = useState(0);
   const s = useJobReplay(id, 70, run);
@@ -30,7 +30,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
   const [fullProgress, setFullProgress] = useState<number | null>(null);
   const [canCancel, setCanCancel] = useState(false);
   useEffect(() => {
-    // Hosted mode: only the uploader (who holds the owner token) can cancel.
+    // On the hosted site only the uploader can cancel.
     api.health().then((h) => setCanCancel(!h.public || !!ownerToken(id)), () => {});
   }, [id]);
   const shownStep = useRef(0);
@@ -42,7 +42,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
   const job = s.job;
   const meta = s.sfm?.scene ?? job?.scene ?? null;
 
-  // 1) Camera solve finished: show the sparse cloud + camera frusta from a wide vantage point.
+  // 1) Camera solve done: show the point cloud and cameras from further back.
   useEffect(() => {
     const v = viewer.current;
     if (!ready || !v || !s.live || !s.sfm || showing !== 'none' || s.snapshot || s.final) return;
@@ -51,7 +51,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
     setShowing('sfm');
   }, [ready, s.live, s.sfm, s.snapshot, s.final, showing]);
 
-  // 2) Live training snapshots: always fetch the newest, never queue a backlog.
+  // 2) Training snapshots: always load the newest one.
   useEffect(() => {
     const v = viewer.current;
     if (!ready || !v || !s.live || !s.snapshot || s.final) return;
@@ -70,8 +70,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
         shownStep.current = st;
         await v.setSplatsFromBuffer(buf, 'splat', { keepCamera: true });
         if (first && meta) {
-          // Glide from the wide solve view into the capture's home viewpoint
-          // (or jump straight there if the page was opened mid-training).
+          // Move to the start view (smoothly if the camera solve view was showing).
           if (showingRef.current === 'sfm') v.lookAt(meta.home_eye, meta.target, false);
           else frameScene(v, meta);
         }
@@ -91,12 +90,12 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
     void pull(url, step);
   }, [ready, s.live, s.snapshot, s.final, meta]);
 
-  // 3) Done: swap in the full-quality scene (view-dependent SH colour) without moving the camera.
+  // 3) Done: load the final scene without moving the camera.
   useEffect(() => {
     const v = viewer.current;
     if (!ready || !v || !s.live || !s.final || showing === 'final') return;
     if (showing === 'none') frameScene(v, meta);
-    // Compact version instantly, then the full-colour scene once it has downloaded.
+    // Small version first, then the full one.
     void loadProgressive(v, s.final.splat, s.final.ply, setFullProgress).catch(() => {});
     setShowing('final');
   }, [ready, s.live, s.final, showing, meta]);
@@ -189,7 +188,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
           {stats && (
             <span className="mono faint hud">
               {stats.fps.toFixed(0)} fps · {stats.splatCount.toLocaleString()} splats · sort{' '}
-              {stats.sortMs >= 0 ? `${stats.sortMs.toFixed(1)} ms` : '—'}
+              {stats.sortMs >= 0 ? `${stats.sortMs.toFixed(1)} ms` : '-'}
             </span>
           )}
         </div>
@@ -240,7 +239,7 @@ function Timeline({ s, replay }: { s: JobStreamState; replay: boolean }) {
         const p = s.stageProgress[st.key] ?? 0;
         return (
           <li key={st.key} className={`tl ${state}`}>
-            <span className="tl-mark">{state === 'done' ? '✓' : i + 1}</span>
+            <span className="tl-mark">{state === 'done' ? <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.6-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg> : i + 1}</span>
             <div className="tl-body">
               <div className="tl-head">
                 <span className="tl-label">{st.label}</span>
@@ -305,26 +304,26 @@ function Metrics({ s }: { s: JobStreamState }) {
       <div className="eyebrow">{isLocal ? 'Brush · this computer' : `Modal · ${s.job?.gpu ?? ''}`}</div>
       <Stat
         label="Step"
-        value={p ? `${p.step.toLocaleString()}` : '—'}
+        value={p ? `${p.step.toLocaleString()}` : '-'}
         sub={p ? `of ${p.steps.toLocaleString()}${p.it_s ? ` · ${p.it_s} it/s` : ''}` : 'waiting for GPU'}
       />
       {!isLocal && (
         <>
           <Stat
             label="Training PSNR"
-            value={p?.psnr != null ? `${p.psnr.toFixed(2)} dB` : '—'}
+            value={p?.psnr != null ? `${p.psnr.toFixed(2)} dB` : '-'}
             sub={t?.test_psnr != null ? `held-out views: ${t.test_psnr.toFixed(2)} dB` : 'how closely renders match the photos'}
           />
           <Sparkline values={psnr} />
           <Stat
             label="Gaussians"
-            value={p?.gaussians != null ? p.gaussians.toLocaleString() : '—'}
+            value={p?.gaussians != null ? p.gaussians.toLocaleString() : '-'}
             sub="MCMC densification, capped"
           />
           <Sparkline values={gs} color="#7dd3fc" floor={0} />
         </>
       )}
-      <Stat label="Live snapshots" value={s.snapshotCount || '—'} sub={s.snapshot ? `${s.snapshot.splats.toLocaleString()} splats streamed` : undefined} />
+      <Stat label="Live snapshots" value={s.snapshotCount || '-'} sub={s.snapshot ? `${s.snapshot.splats.toLocaleString()} splats streamed` : undefined} />
       {s.job?.metrics.total_seconds != null && (
         <Stat label="Video → 3D" value={formatSeconds(s.job.metrics.total_seconds)} sub={s.job.metrics.ply_mb ? `${s.job.metrics.ply_mb} MB scene` : undefined} />
       )}

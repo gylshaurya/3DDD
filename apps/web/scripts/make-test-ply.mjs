@@ -1,6 +1,6 @@
 // Generates PLY test fixtures in public/samples/:
-//   <name>.ply           — a .splat file converted to a standard 3DGS PLY (SH degree 0)
-//   sh-test.ply          — synthetic scene whose color depends on view direction (SH degree 3)
+//   <name>.ply           a .splat file converted to a standard 3DGS PLY (SH degree 0)
+//   sh-test.ply          synthetic scene whose color depends on view direction (SH degree 3)
 //
 // Usage: node scripts/make-test-ply.mjs public/samples/train.splat
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -25,7 +25,7 @@ function writePly(path, count, props, fill) {
 const BASE = ['x', 'y', 'z', 'nx', 'ny', 'nz', 'f_dc_0', 'f_dc_1', 'f_dc_2'];
 const TAIL = ['opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
 
-// 1) .splat → .ply (SH0)
+// 1) .splat -> .ply (SH0)
 const src = process.argv[2];
 if (src) {
   const buf = readFileSync(src);

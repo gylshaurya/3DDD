@@ -24,8 +24,8 @@ from .frames import probe
 from .jobs import JobManager
 
 MAX_UPLOAD_BYTES = (PUBLIC_LIMITS["max_upload_mb"] if PUBLIC else 1500) * 1_000_000
-# Live-event streams end after this long and the browser resumes with ?since=N, which keeps
-# them inside hosting proxies' request timeouts (Modal's web endpoints cap requests at 150 s).
+# Event streams close after this many seconds and the browser reconnects with ?since=N
+# (Modal limits requests to 150 s).
 STREAM_MAX_S = 100
 SAMPLE_VIDEOS = DATA_DIR / "test-videos"
 WEB_DIST = REPO_ROOT / "apps" / "web" / "dist"
@@ -129,7 +129,7 @@ async def create_job(
     if PUBLIC:
         _check_public_limits(request, backend, preset, gpu)
     tmp = Path(tempfile.mkdtemp(dir=DATA_DIR))
-    try:  # the temp dir is removed on every path: success, validation errors, client disconnects
+    try:
         if video is not None:
             suffix = Path(video.filename or "capture.mp4").suffix.lower() or ".mp4"
             dst = tmp / f"upload{suffix}"
@@ -153,7 +153,7 @@ async def create_job(
         if PUBLIC:
             try:
                 seconds = probe(dst).duration
-            except Exception as e:  # noqa: BLE001 - ffprobe rejects anything that isn't a video
+            except Exception as e:
                 raise HTTPException(400, "That file doesn't look like a video") from e
             if seconds > PUBLIC_LIMITS["max_video_seconds"]:
                 raise HTTPException(400, f"Please keep videos under {PUBLIC_LIMITS['max_video_seconds']} seconds")
@@ -163,7 +163,7 @@ async def create_job(
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         _recent_by_ip[_client_ip(request)].append(time.time())
-        # The owner token is returned exactly once; only its hash is stored.
+        # Only the hash of the owner token is stored.
         return {**manager.snapshot(job), "owner_token": token}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -175,7 +175,7 @@ def list_jobs(ids: str | None = None) -> list[dict]:
     if ids is not None:
         wanted = set(ids.split(","))
         jobs = [j for j in jobs if j.id in wanted]
-    elif PUBLIC:  # hosted: never list strangers' uploads
+    elif PUBLIC:  # don't list other people's uploads
         jobs = [j for j in jobs if j.featured]
     return [manager.snapshot(j) for j in jobs]
 
@@ -265,7 +265,7 @@ if WEB_DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        # Built assets first, then public/ (favicon, dev sample scenes), else the SPA shell.
+        # Built files first, then public/, otherwise the app shell.
         for root in (WEB_DIST, WEB_PUBLIC):
             f = (root / path).resolve()
             if path and f.is_file() and root.resolve() in f.parents:

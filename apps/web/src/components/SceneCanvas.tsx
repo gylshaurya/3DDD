@@ -3,7 +3,7 @@ import type { SceneMeta } from '../lib/api';
 import type { Viewer, ViewerStats } from '../viewer';
 import { SplatViewer } from './SplatViewer';
 
-/** Applies a scene's gravity + home view to a viewer, then loads without re-framing. */
+/** Set the scene's up direction and start view. */
 export function frameScene(v: Viewer, meta: SceneMeta | null | undefined, zoom = 1): void {
   if (!meta) return;
   v.setUpAxis(meta.up);
@@ -11,7 +11,7 @@ export function frameScene(v: Viewer, meta: SceneMeta | null | undefined, zoom =
   v.lookAt(eye, meta.target);
 }
 
-/** Download a file with progress (0..1); resolves to its bytes. */
+/** Download a file and report progress from 0 to 1. */
 export async function fetchWithProgress(
   url: string,
   onProgress: (f: number) => void,
@@ -40,11 +40,7 @@ export async function fetchWithProgress(
   return out.buffer;
 }
 
-/**
- * Show the compact .splat right away, then fetch the full .ply (view-dependent colour) in the
- * background and crossfade to it without moving the camera. Big scenes open in seconds on slow
- * connections and still end up at full quality.
- */
+/** Show the small .splat first, then swap in the full .ply once it has downloaded. */
 export async function loadProgressive(
   v: Viewer,
   splatUrl: string,
@@ -74,7 +70,7 @@ interface Props {
   onError?: (e: Error) => void;
 }
 
-/** A splat viewer that opens a captured scene from its "home" capture viewpoint. */
+/** Splat viewer that opens a scene from its start view. */
 export function SceneCanvas({
   src, fullSrc, meta, autoOrbit, className, style, onReady, onStats, onLoaded, onFullProgress, onError,
 }: Props) {

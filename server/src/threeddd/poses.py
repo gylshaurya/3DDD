@@ -1,11 +1,7 @@
-"""Stage 2: structure-from-motion. Recover a camera pose for every frame.
+"""Stage 2: camera solve (structure-from-motion) with pycolmap.
 
-SIFT features → sequential matching (frames come from a video, so each frame
-only needs to be matched against its temporal neighbours plus a quadratic
-stride for loop closure) → global SfM (GLOMAP, built into pycolmap 4), falling
-back to incremental SfM if the global solver registers too few images.
-Finally the images are undistorted to a pinhole model, which is what the
-splat trainers expect.
+SIFT features, matching, then global SfM, with incremental SfM as a fallback.
+Images are undistorted to a pinhole model for the trainers.
 """
 
 from __future__ import annotations
@@ -46,12 +42,8 @@ def _largest(recs: dict[int, pycolmap.Reconstruction]) -> pycolmap.Reconstructio
 
 
 def make_pairs(names: list[str], window: int = 10, keyframes: int = 15) -> list[tuple[str, str]]:
-    """Which frame pairs to match.
-
-    Video frames only overlap with their neighbours, so exhaustive matching wastes most of its time.
-    But matching *only* neighbours never links the end of a walk-around back to its start, and the
-    reconstruction drifts into a doubled "ghost" scene. So: a sliding window for local accuracy, plus
-    every frame against a set of keyframes spread over the whole capture for loop closure.
+    """Frame pairs to match: each frame with its neighbours, plus keyframes across
+    the whole video so the end of a walk-around links back to the start (loop closure).
     """
     n = len(names)
     out: set[tuple[int, int]] = set()
@@ -66,9 +58,8 @@ def make_pairs(names: list[str], window: int = 10, keyframes: int = 15) -> list[
 
 
 def global_options() -> pycolmap.GlobalPipelineOptions:
-    """Global SfM settings. With THREEDDD_SFM_FAST=1 (used on cloud CPUs, which are much slower per
-    core than Apple silicon for these mostly single-threaded solvers) we cap the number of 3D tracks
-    and skip retriangulation: camera poses barely change, and the points only seed training."""
+    """Global SfM settings. THREEDDD_SFM_FAST=1 caps the number of tracks and skips
+    retriangulation, which makes the solve faster on slow cloud CPUs."""
     opts = pycolmap.GlobalPipelineOptions()
     if os.environ.get("THREEDDD_SFM_FAST") == "1":
         opts.mapper.keep_max_num_tracks = 30_000
@@ -117,7 +108,7 @@ def solve_poses(
     rec, mapper = None, "global"
     try:
         rec = _largest(pycolmap.global_mapping(db, frames_dir, sparse, global_options()))
-    except Exception as e:  # noqa: BLE001 - the fallback below handles any solver failure
+    except Exception as e:
         progress(0.6, f"Global SfM failed ({e}); retrying incrementally")
     if rec is None or rec.num_reg_images() < 0.6 * num_frames:
         mapper = "incremental"
@@ -196,12 +187,10 @@ def export_preview(rec: pycolmap.Reconstruction, out: Path, max_points: int = 60
     }), encoding="utf-8")
 
 
-# ---- subprocess runner -------------------------------------------------------------------------
-# Running the solve in a child process lets us (a) turn COLMAP's own log lines into fine-grained
-# live progress and (b) cancel instantly by killing the process instead of unwinding native code.
+# The solve runs in a child process so its log lines can drive progress and it can be killed on cancel.
 
 _GLOG = [
-    # (regex on the log line, progress fraction or callable(match) -> fraction, message template)
+    # (pattern, progress, message)
     (re.compile(r"Processed file \[(\d+)/(\d+)\]"), lambda m: 0.02 + 0.28 * int(m[1]) / int(m[2]),
      "Extracting SIFT features {1}/{2}"),
     (re.compile(r"Features:\s+(\d+)"), None, None),
@@ -229,7 +218,7 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
     lines: queue.Queue[str | None] = queue.Queue()
 
     def pump() -> None:
-        for line in proc.stdout:  # type: ignore[union-attr]
+        for line in proc.stdout:
             lines.put(line.rstrip("\n"))
         lines.put(None)
 
@@ -238,7 +227,7 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
     try:
         while True:
             if should_cancel():
-                progress(frac, "Cancelled")  # the callback raises Cancelled; finally kills the child
+                progress(frac, "Cancelled")
             try:
                 line = lines.get(timeout=0.25)
             except queue.Empty:
@@ -268,7 +257,7 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
                 progress(frac, text)
                 break
     finally:
-        # Any exit path (cancel, a raising progress callback, errors) must not leave the solver running.
+        # Never leave the solver running.
         if proc.poll() is None:
             proc.kill()
             proc.wait()
@@ -283,6 +272,6 @@ if __name__ == "__main__":
 
     try:
         solve_poses(Path(sys.argv[1]), Path(sys.argv[2]), progress=_report)
-    except Exception as e:  # noqa: BLE001 - reported to the parent, which raises it
+    except Exception as e:
         print(f"@@ERROR {e}", flush=True)
         sys.exit(1)

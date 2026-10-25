@@ -163,7 +163,7 @@ export class OrbitCamera {
   }
 }
 
-/** Mouse / touch / trackpad / keyboard input → OrbitCamera. */
+/** Mouse / touch / trackpad / keyboard input -> OrbitCamera. */
 export class CameraControls {
   private pointers = new Map<number, { x: number; y: number }>();
   private lastPinch = 0;

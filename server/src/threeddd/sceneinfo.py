@@ -1,10 +1,4 @@
-"""Scene metadata derived from the camera solve, plus .splat encoding helpers.
-
-COLMAP worlds have an arbitrary orientation. People hold phones upright, so the
-average camera "up" (-Y in COLMAP's camera frame) is a good estimate of gravity.
-The home view is one of the real capture viewpoints, so the first thing the
-viewer shows looks just like the video.
-"""
+"""Scene metadata from the camera solve (up direction, start view) and .splat/.ply helpers."""
 
 from __future__ import annotations
 
@@ -30,7 +24,7 @@ def encode_splat(pos, scale, rgba, quat_wxyz) -> bytes:
 
 
 def ply_to_splat(ply_path: Path, max_splats: int | None = None) -> bytes:
-    """Standard 3DGS .ply → compact .splat (SH band 0 only), sorted by visual importance."""
+    """Convert a 3DGS .ply to the compact .splat format (base colour only)."""
     v = PlyData.read(str(ply_path))["vertex"].data
     pos = np.stack([v["x"], v["y"], v["z"]], 1)
     scale = np.exp(np.stack([v["scale_0"], v["scale_1"], v["scale_2"]], 1))
@@ -55,7 +49,7 @@ def scene_info(preview_json: Path) -> dict:
     fwd = rots[:, :, 2]
     pts = np.array(data["points"], np.float32).reshape(-1, 3)
 
-    # Target: the point all cameras look at most (least-squares intersection of view rays).
+    # Target: the point closest to all camera viewing rays.
     A = np.zeros((3, 3))
     b = np.zeros(3)
     for c, d in zip(centers, fwd):
@@ -66,13 +60,13 @@ def scene_info(preview_json: Path) -> dict:
         target = np.linalg.solve(A, b)
     except np.linalg.LinAlgError:
         target = np.median(pts, 0)
-    # Guard against degenerate (near-parallel) rays: fall back to the robust point median.
+    # If the rays are nearly parallel, use the median point instead.
     if np.linalg.norm(target - centers.mean(0)) > 3 * np.linalg.norm(centers - centers.mean(0), axis=1).max():
         target = np.median(pts, 0)
 
     home = cams[len(cams) // 2]
     eye = np.array(home["center"])
-    eye = target + (eye - target) * 1.15  # step back a little so the subject is fully in frame
+    eye = target + (eye - target) * 1.15  # step back so the subject fits
     radius = float(np.linalg.norm(centers - target, axis=1).mean())
     return {
         "up": up.round(5).tolist(),

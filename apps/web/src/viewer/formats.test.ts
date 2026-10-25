@@ -43,7 +43,7 @@ function splatRecord(): Uint8Array {
   [1.5, -2, 3].forEach((v, i) => dv.setFloat32(i * 4, v, true));
   [0.1, 0.2, 0.3].forEach((v, i) => dv.setFloat32(12 + i * 4, v, true));
   b.set([255, 128, 0, 204], 24);
-  b.set([128 + 127, 128, 128, 128], 28); // w≈1
+  b.set([128 + 127, 128, 128, 128], 28); // w~1
   return b;
 }
 

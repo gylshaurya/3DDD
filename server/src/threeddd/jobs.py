@@ -1,8 +1,4 @@
-"""Job orchestration: one pipeline at a time, events fanned out to any number of viewers.
-
-Every event is appended to the job's history (so a browser that connects late,
-or reconnects, replays the whole story) and pushed to live subscribers.
-"""
+"""Runs jobs one at a time and sends their events to every connected browser."""
 
 from __future__ import annotations
 
@@ -29,7 +25,7 @@ from .remote import solve_poses_remote
 from .sceneinfo import ply_to_splat, scene_info, sfm_preview_splat, spc_to_ply
 
 STAGES = ["frames", "sfm", "train", "export"]
-SNAPSHOTS_KEPT = 400  # keep the whole run so it can be replayed later (~6 MB each)
+SNAPSHOTS_KEPT = 400  # keep all snapshots so runs can be replayed
 CONTACT_SHEET = 24
 
 
@@ -73,13 +69,11 @@ class JobManager:
         self.cancel_flags: dict[str, threading.Event] = {}
         self.queue: queue.Queue[str] = queue.Queue()
         self.loop: asyncio.AbstractEventLoop | None = None
-        # Re-entrant: guards job state, history and subscribers across the worker thread,
-        # the FastAPI threadpool and the event loop.
+        # Shared by the worker thread, request threads and the event loop.
         self._lock = threading.RLock()
         self._load_existing()
         threading.Thread(target=self._worker, daemon=True).start()
 
-    # ---- persistence -------------------------------------------------------------------------
     def _load_existing(self) -> None:
         for jf in sorted(JOBS_DIR.glob("*/job.json")):
             try:
@@ -88,7 +82,7 @@ class JobManager:
                 continue
             if job.status in ("queued", "running"):
                 if job.status == "running" and job.backend == "modal":
-                    # The GPU may still be training for a client that no longer exists: stop it.
+                    # Stop a GPU run that may still be going.
                     threading.Thread(target=relay_cancel, args=(job.id,), daemon=True).start()
                 job.status, job.error = "failed", "Server restarted while this job was running"
             self.jobs[job.id] = job
@@ -104,7 +98,6 @@ class JobManager:
         with self._lock:
             return job.public()
 
-    # ---- events ------------------------------------------------------------------------------
     def publish(self, job: Job, event: dict) -> None:
         event = {"t": round(time.time(), 3), **event}
         with self._lock:
@@ -134,7 +127,6 @@ class JobManager:
             self._save(job)
             self.publish(job, {"type": "job", "job": job.public()})
 
-    # ---- public API --------------------------------------------------------------------------
     def create(self, video: Path, name: str, backend: str, preset: str, gpu: str,
                owner_token: str | None = None) -> Job:
         if backend == "local" and not local.available():
@@ -172,7 +164,6 @@ class JobManager:
         shutil.rmtree(SCENES_DIR / job_id, ignore_errors=True)
         persist()
 
-    # ---- pipeline ----------------------------------------------------------------------------
     def _worker(self) -> None:
         while True:
             job_id = self.queue.get()
@@ -183,7 +174,7 @@ class JobManager:
                 self._run(job)
             except Cancelled:
                 self._update(job, status="cancelled", message="Cancelled", stage=None)
-            except Exception as e:  # noqa: BLE001 - any failure becomes a visible job error
+            except Exception as e:
                 traceback.print_exc()
                 self.publish(job, {"type": "log", "level": "error", "msg": str(e)})
                 self._update(job, status="failed", error=str(e), message="Failed")
@@ -211,8 +202,7 @@ class JobManager:
         self._save(job)
 
     def _progress_cb(self, job: Job):
-        # Counters like "image 12/150" change constantly: log each *phase* once, and
-        # throttle progress updates so a 150-frame solve doesn't emit 300 events.
+        # Log each phase once (ignoring counters) and throttle progress updates.
         last = {"t": 0.0, "phase": None}
 
         def cb(frac: float, msg: str) -> None:
@@ -315,7 +305,7 @@ class JobManager:
         for ev in events:
             k = ev["type"]
             if flag.is_set() and time.time() - relayed_at > 10:
-                # Cancelled locally but the GPU is still streaming: (re-)send the stop flag.
+                # Still receiving after a cancel, so send the stop flag again.
                 threading.Thread(target=relay_cancel, args=(job.id,), daemon=True).start()
                 relayed_at = time.time()
             if k == "progress":
@@ -377,7 +367,7 @@ def relay_cancel(job_id: str, attempts: int = 5) -> bool:
         try:
             modal.Dict.from_name("threeddd-cancel", create_if_missing=True)[job_id] = True
             return True
-        except Exception:  # noqa: BLE001 - network hiccup; retry with backoff
+        except Exception:
             time.sleep(1.5 * (i + 1))
     return False
 

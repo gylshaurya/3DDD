@@ -1,9 +1,7 @@
-"""Hard spending guard for Modal.
+"""Spending guard for Modal.
 
-Every cloud run must pass `check_budget()` first. Spend is the larger of
-  * Modal's own metered cost for this month (authoritative, but can lag), and
-  * our local ledger of every run we launched (instant, conservative estimate).
-A run is refused if spend + the run's worst-case cost would exceed the cap.
+Spend is the larger of Modal's metered cost and our own ledger. A run is refused
+if it could push spend over the cap.
 """
 
 from __future__ import annotations
@@ -17,10 +15,10 @@ from datetime import datetime, timezone
 
 from .config import MODAL_BUDGET_USD, MODAL_LEDGER
 
-# $/hour from `modal billing rates` (Oct 2026). CPU+memory overhead added per run.
+# $/hour from `modal billing rates`, plus CPU and memory overhead per run.
 GPU_RATES = {"T4": 0.59, "L4": 0.80, "A10G": 1.10, "L40S": 1.95, "A100-40GB": 2.10, "A100-80GB": 2.50, "H100": 3.95}
 OVERHEAD_PER_HOUR = 4 * 0.0473 + 32 * 0.008  # 4 cores + 32 GiB memory
-# Non-GPU runs: the cloud camera solve uses 8 cores + 16 GiB (≈ $0.51/h, i.e. overhead + $0.07).
+# The cloud camera solve (8 cores, 16 GiB) costs about the overhead plus $0.07/h.
 CPU_RATES = {"CPU8": 0.07}
 SAFETY = 1.25
 
@@ -32,7 +30,6 @@ class BudgetExceeded(RuntimeError):
 
 
 def _modal_cli() -> list[str]:
-    # The modal package is a server dependency, so its CLI is always runnable from this interpreter.
     return [sys.executable, "-m", "modal"]
 
 
@@ -49,7 +46,7 @@ def metered_this_month() -> float | None:
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
                              timeout=30, check=True).stdout
         return float(json.loads(out)["metered_cost"])
-    except Exception:  # noqa: BLE001 - treat any failure as "unknown"
+    except Exception:
         return None
 
 
@@ -109,7 +106,7 @@ class Run:
         return self
 
     def __exit__(self, *exc):
-        secs = min(self.max_seconds, time.time() - self.t0 + 30)  # + container start/stop overhead
+        secs = min(self.max_seconds, time.time() - self.t0 + 30)  # plus container start/stop
         with _lock:
             data = _load()
             for r in data["runs"]:

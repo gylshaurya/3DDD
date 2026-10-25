@@ -2,9 +2,9 @@
 //
 // GPU record layout (8 × u32 = 32 bytes per splat):
 //   [0..2] position xyz (f32)
-//   [3]    color r,g (f16x2)    — base color = 0.5 + SH_C0 * f_dc, may exceed [0,1]
+//   [3]    color r,g (f16x2)    base color = 0.5 + SH_C0 * f_dc, may exceed [0,1]
 //   [4]    color b, opacity (f16x2)
-//   [5]    scale x,y (f16x2)    — linear (already exp'd)
+//   [5]    scale x,y (f16x2)    linear (already exp'd)
 //   [6]    scale z, 0 (f16x2)
 //   [7]    rotation quat w,x,y,z (snorm8x4)
 // Optional SH record: coefficient-major f16 triples (k*3 + channel), `shStride` u32 per splat.
@@ -26,14 +26,14 @@ export const shStrideU32 = (degree: number): number => Math.ceil((shCoeffCount(d
 const f32Scratch = new Float32Array(1);
 const u32Scratch = new Uint32Array(f32Scratch.buffer);
 
-/** IEEE754 float32 → float16 bits, round-to-nearest, saturating to ±65504. */
+/** IEEE754 float32 -> float16 bits, round-to-nearest, saturating to +/-65504. */
 export function toHalf(v: number): number {
   f32Scratch[0] = v;
   const x = u32Scratch[0];
   const sign = (x >>> 16) & 0x8000;
   const exp = ((x >>> 23) & 0xff) - 127 + 15;
   const mant = x & 0x7fffff;
-  if (((x >>> 23) & 0xff) === 0xff) return mant ? sign | 0x7e00 : sign | 0x7bff; // NaN / inf → max
+  if (((x >>> 23) & 0xff) === 0xff) return mant ? sign | 0x7e00 : sign | 0x7bff; // NaN / inf -> max
   if (exp >= 31) return sign | 0x7bff;
   if (exp <= 0) {
     if (exp < -10) return sign;
@@ -44,7 +44,7 @@ export function toHalf(v: number): number {
   return sign | Math.min(h, 0x7bff);
 }
 
-/** float16 bits → number (used by tests / CPU paths). */
+/** float16 bits -> number (used by tests / CPU paths). */
 export function fromHalf(h: number): number {
   const sign = h & 0x8000 ? -1 : 1;
   const exp = (h >>> 10) & 0x1f;
@@ -80,7 +80,7 @@ export interface DecodedBatch {
   sample: Float32Array;
 }
 
-/** Keep every Nth splat for bounds estimation (≈ 64K samples per 1M splats). */
+/** Keep every Nth splat for bounds estimation (~ 64K samples per 1M splats). */
 export const SAMPLE_EVERY = 16;
 
 function writeRecord(

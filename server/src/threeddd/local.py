@@ -1,10 +1,6 @@
-"""Stage 3 (offline): train on this computer's GPU with Brush (Rust + wgpu).
+"""Stage 3 (offline): train on this computer's GPU with Brush.
 
-Brush runs on Metal (macOS), DirectX 12/Vulkan (Windows) and Vulkan (Linux), so the
-offline path works on any of them; `python -m threeddd.setup_tools` installs the right build.
-
-Brush is quiet on stdout, so we drive progress from the snapshots it exports
-every `export_every` steps and extrapolate the step rate in between.
+Brush prints little, so progress comes from the snapshots it exports.
 """
 
 from __future__ import annotations
@@ -22,7 +18,7 @@ from typing import Iterator
 from .config import TOOLS_DIR
 
 BRUSH_VERSION = "v0.3.0"
-# (system, machine) → Brush release target. Brush publishes builds for exactly these three.
+# (system, machine) to Brush release target.
 TARGETS = {
     ("darwin", "arm64"): "aarch64-apple-darwin",
     ("windows", "amd64"): "x86_64-pc-windows-msvc",
@@ -85,7 +81,7 @@ def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Eve
     ]
     yield {"type": "status", "msg": f"Training on this computer's GPU with Brush ({steps} steps)"}
     t0 = time.time()
-    # stderr goes to a file: an unread PIPE fills after ~64 KB of wgpu warnings and deadlocks Brush.
+    # Write stderr to a file. An unread pipe can fill up and block Brush.
     log_path = out_dir / "brush.log"
     log_file = log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(cmd, cwd=out_dir, stdout=subprocess.DEVNULL, stderr=log_file, text=True)

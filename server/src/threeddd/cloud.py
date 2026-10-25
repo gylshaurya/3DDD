@@ -14,7 +14,7 @@ from . import budget
 
 APP_NAME = "threeddd-trainer"
 
-SETUP_HEADROOM_S = 240  # cold start, image decode, init, held-out eval and export
+SETUP_HEADROOM_S = 240  # startup, evaluation and export time
 
 PRESETS = {
     # steps, gaussian cap, training image long side, wall-clock limit (s)
@@ -25,7 +25,7 @@ PRESETS = {
 
 
 def build_payload(dataset: Path, max_side: int) -> dict:
-    """Undistorted COLMAP dataset → plain-bytes payload (no numpy pickles across Python versions)."""
+    """Pack the undistorted COLMAP dataset as plain bytes for the trainer."""
     rec = pycolmap.Reconstruction(dataset / "sparse" / "0")
     images, Ks, w2cs = [], [], []
     for img in sorted(rec.images.values(), key=lambda i: i.name):
@@ -66,7 +66,7 @@ def train_cloud(
 
     cfg = dict(PRESETS[preset])
     cfg.update(overrides or {})
-    # The Modal hard timeout is exactly what the guard reserves: training time plus setup/export headroom.
+    # The GPU timeout matches what the budget guard reserves.
     hard_timeout = int(cfg["max_seconds"] + SETUP_HEADROOM_S)
     budget.check_budget(gpu, hard_timeout)
     payload = build_payload(dataset, cfg.pop("max_side"))

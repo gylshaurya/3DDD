@@ -58,7 +58,7 @@ which first estimates all rotations and then all positions together, and falls b
 
 **Why sort on the GPU?**
 Alpha blending needs back-to-front order, and the order changes every time the camera moves. Sorting 600k keys
-on the CPU each frame would cap the frame rate. Our WGSL radix sort does it in about 1–2 ms.
+on the CPU each frame would cap the frame rate. Our WGSL radix sort does it in about 1-2 ms.
 
 **What's MCMC densification?**
 3DGS has to add Gaussians where detail is missing. The original heuristic (clone/split on gradient size) can

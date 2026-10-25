@@ -42,7 +42,7 @@ export function ScenePage({ id }: { id: string }) {
     a.click();
   };
 
-  /** Record a seamless 360° orbit straight off the WebGPU canvas. */
+  /** Record a 360 degree orbit from the canvas. */
   const recordTurntable = async () => {
     const v = viewer.current;
     const canvas = wrap.current?.querySelector('canvas');
@@ -111,7 +111,9 @@ export function ScenePage({ id }: { id: string }) {
       {info && m && (
         <aside className="side right panel scene-info">
           <button className="btn ghost small close" onClick={() => setInfo(false)} aria-label="Hide details">
-            ✕
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
           </button>
           <div className="metrics">
             <div className="eyebrow">How this was made</div>
@@ -182,7 +184,7 @@ export function ScenePage({ id }: { id: string }) {
         {stats && (
           <div className="mono faint hud">
             {stats.fps.toFixed(0)} fps · {stats.splatCount.toLocaleString()} splats · {stats.visibleCount.toLocaleString()} visible · GPU radix sort{' '}
-            {stats.sortMs >= 0 ? `${stats.sortMs.toFixed(1)} ms` : '—'}
+            {stats.sortMs >= 0 ? `${stats.sortMs.toFixed(1)} ms` : '-'}
             {fly ? ' · WASD to move, drag to look' : ' · drag to orbit, right-drag to pan, scroll to zoom'}
           </div>
         )}

@@ -1,4 +1,4 @@
-// Drives the real UI: home → "Run sample" → live job page, screenshotting along the way.
+// Drives the real UI: home -> "Run sample" -> live job page, screenshotting along the way.
 // Usage: node scripts/e2e-job.mjs <outDir> <backend modal|local> <preset> [gpu]
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';

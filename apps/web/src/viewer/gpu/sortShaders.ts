@@ -3,7 +3,7 @@
 // Per pass:
 //   1. histogram: one workgroup per 1024-element tile counts digit occurrences and writes
 //      them digit-major: hist[digit * numTiles + tile].
-//   2. scan: exclusive prefix sum over hist (multi-level Blelloch) → global write offsets.
+//   2. scan: exclusive prefix sum over hist (multi-level Blelloch) -> global write offsets.
 //   3. scatter: each tile stably sorts itself by the digit with 8 one-bit splits in
 //      workgroup memory, then writes element p to hist[digit][tile] + (p − tileDigitStart).
 //
@@ -168,7 +168,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_id) lid
     var zeros = 0u;
     for (var j = 0u; j < ITEMS; j++) { zeros += 1u - ((k[j] >> sh) & 1u); }
 
-    // workgroup inclusive scan of zeros (Hillis–Steele)
+    // workgroup inclusive scan of zeros (Hillis-Steele)
     sScan[lid.x] = zeros;
     workgroupBarrier();
     for (var off = 1u; off < WG; off <<= 1u) {

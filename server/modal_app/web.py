@@ -1,11 +1,6 @@
-"""3DDD hosted backend on Modal: the public API plus a CPU function for the camera solve.
+"""3DDD hosted backend on Modal: the public API (`web`) and the camera solve (`solve`).
 
-    cd server && uv run modal deploy modal_app/web.py
-
-* `web`   - the FastAPI app (jobs, live events, scene files). One small container holds the job
-            queue in memory and keeps jobs/scenes on the `threeddd-data` volume.
-* `solve` - structure-from-motion on 8 CPU cores, started per job; streams progress back.
-GPU training is the separate `threeddd-trainer` app (modal_app/trainer.py).
+Deploy with: cd server && uv run modal deploy modal_app/web.py
 """
 
 from __future__ import annotations
@@ -36,8 +31,7 @@ image = (
 )
 
 
-# A single container on purpose: the job queue and live-event fan-out live in its memory.
-# scaledown_window keeps it alive long enough to finish a job after the uploader closes the tab.
+# One container, because the job queue lives in memory. It stays up 20 minutes after the last request.
 @app.function(image=image, volumes={"/data": volume}, cpu=2, memory=4096,
               max_containers=1, scaledown_window=1200, timeout=24 * 3600)
 @modal.concurrent(max_inputs=200)
@@ -74,7 +68,7 @@ def solve(frames_tar: bytes):
                 lambda frac, msg: events.put({"type": "progress", "frac": frac, "msg": msg}),
                 lambda: False,
             )
-        except Exception as e:  # noqa: BLE001 - reported to the caller
+        except Exception as e:
             outcome["error"] = str(e)
         events.put(None)
 

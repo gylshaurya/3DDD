@@ -20,7 +20,7 @@ export function BudgetBadge() {
   useEffect(() => {
     let alive = true;
     let id: ReturnType<typeof setInterval> | undefined;
-    // Spend is an operator concern: hidden on the hosted site.
+    // Hidden on the hosted site.
     api.health().then((h) => {
       if (h.public || !alive) return;
       const tick = () => api.budget().then((x) => alive && setB(x), () => {});

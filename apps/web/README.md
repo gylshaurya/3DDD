@@ -7,8 +7,8 @@ Vite + React + TypeScript app with a from-scratch **WebGPU 3D Gaussian Splatting
 ```bash
 pnpm install
 pnpm samples          # downloads ~340 MB of public sample scenes into public/samples (gitignored)
-pnpm dev              # http://localhost:5173 — app shell
-                      # http://localhost:5173/viewer-test.html?url=/samples/train.splat&orbit=1  — bare viewer
+pnpm dev              # http://localhost:5173, app shell
+                      # http://localhost:5173/viewer-test.html?url=/samples/train.splat&orbit=1  (bare viewer)
 pnpm test             # vitest unit tests (parsers, f16 packing, bounds, camera)
 pnpm test:e2e         # Playwright on the real GPU (headless Chromium, WebGPU via Metal)
 ```
@@ -31,7 +31,7 @@ React: `<SplatViewer src=… autoOrbit onReady={(v) => …} onStats={…} />` (`
 
 ## How it renders
 
-1. **Load** (Web Worker): `.splat` / binary 3DGS `.ply` (SH 0–3, also plain point clouds) are streamed and packed into
+1. **Load** (Web Worker): `.splat` / binary 3DGS `.ply` (SH 0-3, also plain point clouds) are streamed and packed into
    32-byte GPU records (f32 position, f16 color+opacity, f16 scale, snorm8 quaternion) plus f16 SH.
 2. **Cull + project** (compute): EWA projection of the 3D covariance with the perspective Jacobian (+0.3 px low-pass),
    SH evaluation, frustum/near culling, opacity-aware quad extent, atomic compaction of visible splats.

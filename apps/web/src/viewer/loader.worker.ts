@@ -37,7 +37,7 @@ export type LoaderMessage =
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 const cancelled = new Set<number>();
 
-/** Splats decoded per posted batch (≈ 4 MB of GPU data). */
+/** Splats decoded per posted batch (~ 4 MB of GPU data). */
 const BATCH = 131072;
 
 function post(msg: LoaderMessage, transfer: Transferable[] = []): void {
@@ -161,7 +161,7 @@ async function load(id: number, url: string, format?: SplatFormat): Promise<void
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   const totalBytes = Number(res.headers.get('content-length') ?? 0) || 0;
   const encoded = res.headers.get('content-encoding');
-  // With content-encoding the length is the compressed size — don't trust it for .splat.
+  // With content-encoding the length is the compressed size, so don't trust it for .splat.
   const dec = new StreamDecoder(id, format, url, encoded && encoded !== 'identity' ? 0 : totalBytes);
   if (!res.body) {
     dec.push(new Uint8Array(await res.arrayBuffer()));

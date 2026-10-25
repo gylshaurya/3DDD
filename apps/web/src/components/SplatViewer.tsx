@@ -9,7 +9,7 @@ export interface SplatViewerProps {
   background?: [number, number, number];
   className?: string;
   style?: CSSProperties;
-  /** Called once the GPU viewer exists — use it for live snapshot swaps etc. */
+  /** Called once the GPU viewer exists. Use it for live snapshot swaps etc. */
   onReady?: (viewer: Viewer) => void;
   onStats?: (stats: ViewerStats) => void;
   onError?: (err: Error) => void;
@@ -50,8 +50,7 @@ export function SplatViewer({
       v?.dispose();
       setViewer(null);
     };
-    // the GPU device is created once per mount; option changes are applied below
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The GPU device is created once per mount. Option changes are applied below.
   }, []);
 
   useEffect(() => {

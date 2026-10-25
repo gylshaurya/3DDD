@@ -3,7 +3,7 @@ import { api, createJob, GPUS, type Backend, type Health, type Preset } from '..
 import { navigate } from '../lib/router';
 import { QrCode } from './Chrome';
 
-// Measured on the counter scene (150 frames): camera solve ≈ 90 s on an M4.
+// Rough timings measured on the counter scene (150 frames) on an M4.
 const SFM_S = 90;
 const TRAIN_S: Record<Backend, Record<Preset, Record<string, number>>> = {
   modal: {
@@ -37,7 +37,7 @@ export function NewCapture({ localAvailable, health }: { localAvailable: boolean
   }, []);
   useEffect(() => {
     if (!health) return;
-    // Hosted: phones open the public site directly; locally: the laptop's Wi-Fi address.
+    // Hosted: the public site. Local: this laptop's Wi-Fi address.
     if (health.public) setLan(`${location.origin}/capture`);
     else api.lan().then((l) => setLan(l.url), () => {});
   }, [health]);
@@ -97,7 +97,7 @@ export function NewCapture({ localAvailable, health }: { localAvailable: boolean
               <path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
             </svg>
             <div className="drop-title">Drop a video, or click to choose</div>
-            <div className="drop-sub faint">Walk slowly in a circle around something · 20–60 s · MP4 / MOV</div>
+            <div className="drop-sub faint">Walk slowly in a circle around something · 20-60 s · MP4 / MOV</div>
           </>
         ) : (
           <>

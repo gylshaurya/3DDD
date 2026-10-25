@@ -1,10 +1,4 @@
-"""Stage 2 (hosted): run the camera solve on a cloud CPU function.
-
-The hosted server is a small container, so the CPU-heavy structure-from-motion runs in a separate
-8-core Modal function (`threeddd-web/solve`). Frames go up as a tar, live progress streams back, and
-the undistorted dataset comes back as a tar extracted into the job's work dir, the same layout the
-local solve produces.
-"""
+"""Stage 2 (hosted): run the camera solve on a cloud CPU function and bring back the result."""
 
 from __future__ import annotations
 
@@ -56,7 +50,7 @@ def solve_poses_remote(frames_dir: Path, work_dir: Path, progress: Progress,
         try:
             for ev in gen:
                 if should_cancel():
-                    progress(0.0, "Cancelled")  # raises Cancelled
+                    progress(0.0, "Cancelled")
                 if ev["type"] == "progress":
                     progress(ev["frac"], ev["msg"])
                 elif ev["type"] == "error":

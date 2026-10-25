@@ -30,7 +30,7 @@ export function perpendicular(n: Vec3): Vec3 {
 }
 
 /**
- * World → camera matrix in the COLMAP / 3DGS camera convention:
+ * World -> camera matrix in the COLMAP / 3DGS camera convention:
  * +x right, +y down, +z forward (into the screen).
  */
 export function lookAtCV(eye: Vec3, target: Vec3, worldUp: Vec3): Float32Array {
@@ -40,7 +40,7 @@ export function lookAtCV(eye: Vec3, target: Vec3, worldUp: Vec3): Float32Array {
   r = normalize(r);
   const d = cross(f, r); // "down" axis
   const m = new Float32Array(16);
-  // rows of the rotation are r, d, f → column-major layout
+  // rows of the rotation are r, d, f -> column-major layout
   m[0] = r[0]; m[4] = r[1]; m[8] = r[2];
   m[1] = d[0]; m[5] = d[1]; m[9] = d[2];
   m[2] = f[0]; m[6] = f[1]; m[10] = f[2];

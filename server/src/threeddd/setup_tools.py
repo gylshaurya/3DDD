@@ -1,10 +1,7 @@
-"""Cross-platform setup check + Brush installer.
+"""Checks prerequisites and installs Brush for this OS.
 
-    uv run python -m threeddd.setup_tools          # check everything, install Brush if missing
-    uv run python -m threeddd.setup_tools --check  # only report
-
-Works on macOS (Apple Silicon), Windows (x64) and Linux (x64). Downloads are verified
-against pinned SHA-256 checksums before anything is extracted.
+    uv run python -m threeddd.setup_tools          # check and install Brush if missing
+    uv run python -m threeddd.setup_tools --check  # only check
 """
 
 from __future__ import annotations
@@ -45,8 +42,8 @@ def _system() -> str:
 
 def install_brush(target: str) -> Path:
     archive = f"brush-app-{target}" + (".zip" if target.endswith("windows-msvc") else ".tar.xz")
-    print(f"Downloading {archive} ({BRUSH_VERSION}) …", flush=True)
-    with urllib.request.urlopen(RELEASE_URL + archive, timeout=300) as r:  # noqa: S310 - fixed https URL
+    print(f"Downloading {archive} ({BRUSH_VERSION})...", flush=True)
+    with urllib.request.urlopen(RELEASE_URL + archive, timeout=300) as r:
         data = r.read()
     digest = hashlib.sha256(data).hexdigest()
     if digest != SHA256[target]:
@@ -56,14 +53,14 @@ def install_brush(target: str) -> Path:
     shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True)
     if archive.endswith(".zip"):
-        # The Windows zip is flat (no top-level folder).
+        # The Windows zip has no top-level folder.
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for name in z.namelist():
                 if Path(name).name and ".." not in Path(name).parts:
                     (dest / Path(name).name).write_bytes(z.read(name))
         exe = dest / "brush_app.exe"
     else:
-        # macOS/Linux tarballs may or may not wrap files in a folder; flatten either way.
+        # Flatten the tarball in case it has a top-level folder.
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as t:
             for m in t.getmembers():
                 if m.isfile() and ".." not in Path(m.name).parts:
@@ -75,7 +72,7 @@ def install_brush(target: str) -> Path:
         if _system() == "darwin":
             subprocess.run(["xattr", "-dr", "com.apple.quarantine", str(dest)], check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"Installed Brush → {exe}")
+    print(f"Installed Brush at {exe}")
     return exe
 
 
@@ -86,32 +83,32 @@ def check(install: bool) -> bool:
 
     for tool in ("ffmpeg", "ffprobe"):
         found = shutil.which(tool)
-        print(f"  {'✓' if found else '✗'} {tool}: {found or 'not found'}")
+        print(f"  [{'ok' if found else 'missing'}] {tool}: {found or 'not found'}")
         if not found:
             ok = False
             print(f"      install: {FFMPEG_HINT.get(system, 'install ffmpeg and put it on PATH')}")
 
     try:
-        import pycolmap  # noqa: F401
+        import pycolmap
 
-        print(f"  ✓ pycolmap {pycolmap.__version__}")
+        print(f"  [ok] pycolmap {pycolmap.__version__}")
     except ImportError as e:
         ok = False
-        print(f"  ✗ pycolmap: {e}. Supported on macOS arm64, Windows x64 and Linux x64 (uv sync installs it).")
+        print(f"  [missing] pycolmap: {e}. Supported on macOS arm64, Windows x64 and Linux x64 (uv sync installs it).")
 
     brush = brush_path()
     target = brush_target()
     if brush:
-        print(f"  ✓ Brush (offline trainer): {brush}")
+        print(f"  [ok] Brush (offline trainer): {brush}")
     elif target is None:
-        print(f"  – Brush: no build for {platform.system()} {platform.machine()}; use the cloud GPU trainer")
+        print(f"  [skip] Brush: no build for {platform.system()} {platform.machine()}; use the cloud GPU trainer")
     elif install:
         brush = install_brush(target)
     else:
-        print("  – Brush (offline trainer): not installed; run without --check to install")
+        print("  [skip] Brush (offline trainer): not installed, run without --check to install")
 
     modal_token = Path.home() / ".modal.toml"
-    print(f"  {'✓' if modal_token.exists() else '–'} Modal token: "
+    print(f"  [{'ok' if modal_token.exists() else 'skip'}] Modal token: "
           f"{'found' if modal_token.exists() else 'missing (cloud GPU disabled until you run: uv run modal token new)'}")
     return ok
 
@@ -120,8 +117,6 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="only report, don't install anything")
     args = ap.parse_args()
-    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # ✓/✗ on legacy Windows consoles
     sys.exit(0 if check(install=not args.check) else 1)
 
 
