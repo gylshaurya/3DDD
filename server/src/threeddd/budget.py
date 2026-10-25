@@ -20,6 +20,8 @@ from .config import MODAL_BUDGET_USD, MODAL_LEDGER
 # $/hour from `modal billing rates` (Oct 2026). CPU+memory overhead added per run.
 GPU_RATES = {"T4": 0.59, "L4": 0.80, "A10G": 1.10, "L40S": 1.95, "A100-40GB": 2.10, "A100-80GB": 2.50, "H100": 3.95}
 OVERHEAD_PER_HOUR = 4 * 0.0473 + 32 * 0.008  # 4 cores + 32 GiB memory
+# Non-GPU runs: the cloud camera solve uses 8 cores + 16 GiB (≈ $0.51/h, i.e. overhead + $0.07).
+CPU_RATES = {"CPU8": 0.07}
 SAFETY = 1.25
 
 _lock = threading.Lock()
@@ -35,7 +37,10 @@ def _modal_cli() -> list[str]:
 
 
 def run_cost(gpu: str, seconds: float) -> float:
-    return (GPU_RATES[gpu] + OVERHEAD_PER_HOUR) * seconds / 3600 * SAFETY
+    rate = GPU_RATES.get(gpu, CPU_RATES.get(gpu))
+    if rate is None:
+        raise KeyError(f"Unknown compute type {gpu}")
+    return (rate + OVERHEAD_PER_HOUR) * seconds / 3600 * SAFETY
 
 
 def metered_this_month() -> float | None:

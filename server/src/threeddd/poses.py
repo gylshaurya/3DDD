@@ -65,6 +65,18 @@ def make_pairs(names: list[str], window: int = 10, keyframes: int = 15) -> list[
     return [(names[a], names[b]) for a, b in sorted(out)]
 
 
+def global_options() -> pycolmap.GlobalPipelineOptions:
+    """Global SfM settings. With THREEDDD_SFM_FAST=1 (used on cloud CPUs, which are much slower per
+    core than Apple silicon for these mostly single-threaded solvers) we cap the number of 3D tracks
+    and skip retriangulation: camera poses barely change, and the points only seed training."""
+    opts = pycolmap.GlobalPipelineOptions()
+    if os.environ.get("THREEDDD_SFM_FAST") == "1":
+        opts.mapper.keep_max_num_tracks = 30_000
+        opts.mapper.ba_num_iterations = 2
+        opts.mapper.skip_retriangulation = True
+    return opts
+
+
 def solve_poses(
     frames_dir: Path,
     work_dir: Path,
@@ -104,7 +116,7 @@ def solve_poses(
     sparse.mkdir()
     rec, mapper = None, "global"
     try:
-        rec = _largest(pycolmap.global_mapping(db, frames_dir, sparse))
+        rec = _largest(pycolmap.global_mapping(db, frames_dir, sparse, global_options()))
     except Exception as e:  # noqa: BLE001 - the fallback below handles any solver failure
         progress(0.6, f"Global SfM failed ({e}); retrying incrementally")
     if rec is None or rec.num_reg_images() < 0.6 * num_frames:
