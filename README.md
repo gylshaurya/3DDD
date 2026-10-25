@@ -2,6 +2,8 @@
 
 **Film anything with your phone. Walk around inside it a few minutes later.**
 
+**Live demo: https://3ddd-psi.vercel.app**. Open a scene, or upload your own video (phone uploads work through the QR code).
+
 3DDD turns a casual phone video into a photoreal, explorable 3D scene using 3D Gaussian Splatting.
 It solves the camera pose of every frame, trains several hundred thousand 3D Gaussians on a cloud GPU while
 streaming the half-trained scene to your browser, and renders the result in a WebGPU renderer we wrote ourselves.
@@ -81,13 +83,22 @@ venue Wi-Fi.
 
 ## Running it
 
-Requirements: macOS on Apple Silicon (for the local trainer), `brew install ffmpeg uv`, `pnpm`, and a Modal
-account (`modal token new`). Chrome, Edge or Safari 26 for WebGPU.
+Works on **macOS (Apple Silicon), Windows (x64) and Linux (x64)**. You need [uv](https://docs.astral.sh/uv/),
+Node.js 22+ with `pnpm`, `ffmpeg`, and a Modal account for cloud GPU training (`cd server && uv run modal token new`).
+The viewer needs a WebGPU browser: Chrome, Edge, or Safari 26+.
 
-```bash
-./run.sh          # builds the UI and serves everything at http://localhost:8000
-./run.sh --dev    # hot reload: API on :8000, UI on http://localhost:5280
-```
+| | Install ffmpeg | Start |
+|---|---|---|
+| macOS | `brew install ffmpeg uv` | `./run.sh` |
+| Linux | `sudo apt install ffmpeg` | `./run.sh` |
+| Windows | `winget install --id Gyan.FFmpeg -e` | `powershell -ExecutionPolicy Bypass -File .\run.ps1` |
+
+Then open http://localhost:8000. `--dev` / `-Dev` starts hot reload (API on :8000, UI on :5280).
+
+The start scripts run `uv run python -m threeddd.setup_tools`, which checks prerequisites and downloads the
+offline trainer, [Brush](https://github.com/ArthurBrussee/brush), for your OS, verifying its SHA-256 checksum. Offline
+training uses Metal on macOS, DirectX 12 or Vulkan on Windows, and Vulkan on Linux. Brush has no build for ARM
+Linux or Intel Macs; those machines use the cloud trainer.
 
 Deploy the GPU trainer once, and again after editing `server/modal_app/trainer.py`:
 
@@ -95,11 +106,34 @@ Deploy the GPU trainer once, and again after editing `server/modal_app/trainer.p
 cd server && uv run modal deploy modal_app/trainer.py
 ```
 
-Brush, the offline trainer, lives in `tools/` (not committed). To reinstall it:
+## Hosted version
+
+The public site is a static build on Vercel talking to a backend on Modal:
+
+```
+Vercel (apps/web, static)  ──►  Modal "threeddd-web"                    ──►  Modal "threeddd-trainer"
+                                  web:   FastAPI app, 2 CPUs, jobs in a        train: GPU training (L4 / L40S)
+                                         Volume, live events over SSE
+                                  solve: camera solve on 8 CPUs, per job
+```
 
 ```bash
-mkdir -p tools && cd tools && gh release download v0.3.0 -R ArthurBrussee/brush -p 'brush-app-aarch64-apple-darwin.tar.xz' && tar xf brush-app-*.tar.xz
+cd server && uv run modal deploy modal_app/web.py                 # API + camera-solve function
+cd apps/web && vercel env add VITE_API_BASE production            # the web endpoint URL printed above
+cd apps/web && vercel deploy --prod
 ```
+
+Because anyone can upload, hosted mode (`THREEDDD_PUBLIC=1`) is locked down:
+- only the *preview* and *fast* presets, on L4 or L40S GPUs;
+- videos up to 120 s / 300 MB, checked with ffprobe;
+- 3 captures per visitor per hour, 25 per day, at most 3 queued;
+- uploads are private: the gallery lists only featured scenes, and each uploader gets an owner token that
+  is needed to cancel or delete their own job;
+- every run still goes through the same budget guard.
+
+Live event streams end every 100 s and the browser resumes them from an event cursor. This keeps them
+inside Modal's 150 s request limit. Big scenes open from the compact `.splat` first, and the full-colour
+`.ply` streams in behind it.
 
 ### Tests
 
@@ -114,7 +148,7 @@ cd apps/web && node scripts/e2e-job.mjs /tmp/run local preview   # drives the wh
 
 ```
 apps/web/            React + Vite app and the WebGPU renderer (src/viewer)
-server/src/threeddd frames.py · poses.py · cloud.py · local.py · jobs.py · api.py · budget.py · sceneinfo.py
-server/modal_app/    trainer.py, the Modal GPU function
+server/src/threeddd frames.py · poses.py · remote.py · cloud.py · local.py · jobs.py · api.py · budget.py · sceneinfo.py · setup_tools.py
+server/modal_app/    trainer.py (GPU training) · web.py (hosted API + cloud camera solve)
 data/                jobs/, scenes/, test-videos/, modal_ledger.json   (git-ignored)
 ```
