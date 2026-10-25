@@ -9,12 +9,11 @@ A run is refused if spend + the run's worst-case cost would exceed the cap.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .config import MODAL_BUDGET_USD, MODAL_LEDGER
 
@@ -30,8 +29,9 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
-def _modal_cli() -> str:
-    return shutil.which("modal") or str(Path.home() / ".local/bin/modal")
+def _modal_cli() -> list[str]:
+    # The modal package is a server dependency, so its CLI is always runnable from this interpreter.
+    return [sys.executable, "-m", "modal"]
 
 
 def run_cost(gpu: str, seconds: float) -> float:
@@ -40,8 +40,9 @@ def run_cost(gpu: str, seconds: float) -> float:
 
 def metered_this_month() -> float | None:
     try:
-        out = subprocess.run([_modal_cli(), "billing", "summary", "--json"],
-                             capture_output=True, text=True, timeout=30, check=True).stdout
+        out = subprocess.run([*_modal_cli(), "billing", "summary", "--json"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=30, check=True).stdout
         return float(json.loads(out)["metered_cost"])
     except Exception:  # noqa: BLE001 - treat any failure as "unknown"
         return None
@@ -49,7 +50,7 @@ def metered_this_month() -> float | None:
 
 def _load() -> dict:
     if MODAL_LEDGER.exists():
-        return json.loads(MODAL_LEDGER.read_text())
+        return json.loads(MODAL_LEDGER.read_text(encoding="utf-8"))
     return {"runs": []}
 
 
@@ -99,7 +100,7 @@ class Run:
                 "label": self.label, "gpu": self.gpu, "status": "reserved", "seconds": round(self.max_seconds, 1),
                 "est_cost": round(run_cost(self.gpu, self.max_seconds), 4),
             })
-            MODAL_LEDGER.write_text(json.dumps(data, indent=2))
+            MODAL_LEDGER.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return self
 
     def __exit__(self, *exc):
@@ -109,5 +110,5 @@ class Run:
             for r in data["runs"]:
                 if r.get("id") == self.id:
                     r.update(status="settled", seconds=round(secs, 1), est_cost=round(run_cost(self.gpu, secs), 4))
-            MODAL_LEDGER.write_text(json.dumps(data, indent=2))
+            MODAL_LEDGER.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return False

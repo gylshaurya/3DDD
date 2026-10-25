@@ -11,6 +11,7 @@ splat trainers expect.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import re
 import shutil
@@ -93,7 +94,7 @@ def solve_poses(
     names = sorted(p.name for p in frames_dir.glob("*.jpg"))
     pairs = make_pairs(names)
     pair_file = work_dir / "pairs.txt"
-    pair_file.write_text("".join(f"{a} {b}\n" for a, b in pairs))
+    pair_file.write_text("".join(f"{a} {b}\n" for a, b in pairs), encoding="utf-8")
     pairing = pycolmap.ImportedPairingOptions()
     pairing.match_list_path = str(pair_file)
     pycolmap.match_image_pairs(db, pairing_options=pairing)
@@ -150,7 +151,7 @@ def solve_poses(
         mapper=mapper,
         seconds=time.time() - t0,
     )
-    (work_dir / "sfm_stats.json").write_text(json.dumps(asdict(stats), indent=2))
+    (work_dir / "sfm_stats.json").write_text(json.dumps(asdict(stats), indent=2), encoding="utf-8")
     progress(1.0, f"Registered {stats.registered}/{num_frames} cameras, {stats.points3d} points ({mapper})")
     return stats
 
@@ -180,7 +181,7 @@ def export_preview(rec: pycolmap.Reconstruction, out: Path, max_points: int = 60
         "points": pts.round(4).flatten().tolist(),
         "colors": cols.flatten().tolist(),
         "cameras": cams,
-    }))
+    }), encoding="utf-8")
 
 
 # ---- subprocess runner -------------------------------------------------------------------------
@@ -210,6 +211,7 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
     proc = subprocess.Popen(
         [sys.executable, "-m", "threeddd.poses", str(frames_dir), str(work_dir)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        encoding="utf-8", errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert proc.stdout is not None
     lines: queue.Queue[str | None] = queue.Queue()
@@ -260,7 +262,7 @@ def solve_poses_subprocess(frames_dir: Path, work_dir: Path, progress: Progress,
             proc.wait()
     if proc.wait() != 0:
         raise RuntimeError(error or f"Camera solve crashed (exit code {proc.returncode})")
-    return SfmStats(**json.loads((work_dir / "sfm_stats.json").read_text()))
+    return SfmStats(**json.loads((work_dir / "sfm_stats.json").read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

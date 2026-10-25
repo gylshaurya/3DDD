@@ -46,7 +46,7 @@ def ply_to_splat(ply_path: Path, max_splats: int | None = None) -> bytes:
 
 
 def scene_info(preview_json: Path) -> dict:
-    data = json.loads(preview_json.read_text())
+    data = json.loads(preview_json.read_text(encoding="utf-8"))
     cams = data["cameras"]
     centers = np.array([c["center"] for c in cams])
     rots = np.array([c["rotation"] for c in cams])  # camera-to-world
@@ -85,7 +85,7 @@ def scene_info(preview_json: Path) -> dict:
 
 def sfm_preview_splat(preview_json: Path) -> bytes:
     """Sparse points as tiny splats + every camera drawn as a glowing frustum made of splats."""
-    data = json.loads(preview_json.read_text())
+    data = json.loads(preview_json.read_text(encoding="utf-8"))
     pts = np.array(data["points"], np.float32).reshape(-1, 3)
     cols = np.array(data["colors"], np.uint8).reshape(-1, 3)
     cams = data["cameras"]

@@ -1,4 +1,7 @@
-"""Stage 3 (offline): train on this Mac's GPU with Brush (Rust + WebGPU/Metal).
+"""Stage 3 (offline): train on this computer's GPU with Brush (Rust + wgpu).
+
+Brush runs on Metal (macOS), DirectX 12/Vulkan (Windows) and Vulkan (Linux), so the
+offline path works on any of them; `python -m threeddd.setup_tools` installs the right build.
 
 Brush is quiet on stdout, so we drive progress from the snapshots it exports
 every `export_every` steps and extrapolate the step rate in between.
@@ -6,7 +9,10 @@ every `export_every` steps and extrapolate the step rate in between.
 
 from __future__ import annotations
 
+import os
+import platform
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -15,7 +21,15 @@ from typing import Iterator
 
 from .config import TOOLS_DIR
 
-BRUSH = TOOLS_DIR / "brush-app-aarch64-apple-darwin" / "brush_app"
+BRUSH_VERSION = "v0.3.0"
+# (system, machine) → Brush release target. Brush publishes builds for exactly these three.
+TARGETS = {
+    ("darwin", "arm64"): "aarch64-apple-darwin",
+    ("windows", "amd64"): "x86_64-pc-windows-msvc",
+    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
+}
+_MACHINE_ALIASES = {"x86_64": {"amd64", "x86_64", "x64"}, "amd64": {"amd64", "x86_64", "x64"},
+                    "arm64": {"arm64", "aarch64"}}
 
 PRESETS = {
     "preview": {"steps": 3000, "max_splats": 300_000, "max_side": 1000},
@@ -24,8 +38,33 @@ PRESETS = {
 }
 
 
+def brush_target(system: str | None = None, machine: str | None = None) -> str | None:
+    """The Brush release target for this OS/CPU, or None if Brush doesn't ship one."""
+    system = (system or platform.system()).lower()
+    machine = (machine or platform.machine()).lower()
+    for (sys_name, arch), target in TARGETS.items():
+        if system == sys_name and machine in _MACHINE_ALIASES[arch]:
+            return target
+    return None
+
+
+def brush_path() -> Path | None:
+    """Where the Brush binary is: $THREEDDD_BRUSH, then tools/brush-app-<target>/, then PATH."""
+    override = os.environ.get("THREEDDD_BRUSH")
+    if override:
+        return Path(override) if Path(override).is_file() else None
+    target = brush_target()
+    if target:
+        exe = "brush_app.exe" if target.endswith("windows-msvc") else "brush_app"
+        candidate = TOOLS_DIR / f"brush-app-{target}" / exe
+        if candidate.is_file():
+            return candidate
+    found = shutil.which("brush_app")
+    return Path(found) if found else None
+
+
 def available() -> bool:
-    return BRUSH.exists()
+    return brush_path() is not None
 
 
 def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Event) -> Iterator[dict]:
@@ -35,17 +74,20 @@ def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Eve
     out_dir.mkdir(parents=True, exist_ok=True)
     for old in out_dir.glob("export_*.ply"):
         old.unlink()
+    brush = brush_path()
+    if brush is None:
+        raise RuntimeError("Brush is not installed. Run: uv run python -m threeddd.setup_tools")
     cmd = [
-        str(BRUSH), str(dataset.resolve()),
+        str(brush), str(dataset.resolve()),
         "--total-steps", str(steps), "--max-splats", str(cfg["max_splats"]),
         "--max-resolution", str(cfg["max_side"]), "--export-every", str(export_every),
         "--export-path", ".", "--export-name", "export_{iter}.ply",
     ]
-    yield {"type": "status", "msg": f"Training on this Mac's GPU with Brush ({steps} steps)"}
+    yield {"type": "status", "msg": f"Training on this computer's GPU with Brush ({steps} steps)"}
     t0 = time.time()
     # stderr goes to a file: an unread PIPE fills after ~64 KB of wgpu warnings and deadlocks Brush.
     log_path = out_dir / "brush.log"
-    log_file = log_path.open("w")
+    log_file = log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(cmd, cwd=out_dir, stdout=subprocess.DEVNULL, stderr=log_file, text=True)
     seen: set[str] = set()
     last_step, last_t = 0, t0
@@ -86,7 +128,7 @@ def train_local(dataset: Path, out_dir: Path, preset: str, cancel: threading.Eve
             proc.wait()
         log_file.close()
     if proc.returncode != 0:
-        err = log_path.read_text(errors="replace")[-2000:]
+        err = log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
         raise RuntimeError(f"Brush exited with code {proc.returncode}: {err}")
     final = out_dir / f"export_{steps}.ply"
     if not final.exists():

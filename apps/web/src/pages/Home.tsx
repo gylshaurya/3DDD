@@ -49,9 +49,9 @@ export function Home() {
               <span className="accent">Walk around inside it</span> minutes later.
             </h1>
             <p className="dim lede">
-              3DDD turns a phone video into a photoreal, explorable 3D scene. It solves every camera, trains
+              3DDD turns a phone video into a photoreal, explorable 3D scene. It solves every camera frame, trains
               hundreds of thousands of Gaussians on a cloud GPU while you watch, and renders the result here in a
-              hand-written WebGPU renderer.
+             WebGPU renderer.
             </p>
             {active.length > 0 && (
               <div className="active-jobs">

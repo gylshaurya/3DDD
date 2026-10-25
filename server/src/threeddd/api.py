@@ -170,7 +170,7 @@ def scenes() -> list[dict]:
         if not (d / "scene.splat").exists():
             continue
         job = manager.jobs.get(d.name)
-        meta = json.loads((d / "scene.json").read_text()) if (d / "scene.json").exists() else {}
+        meta = json.loads((d / "scene.json").read_text(encoding="utf-8")) if (d / "scene.json").exists() else {}
         out.append({
             "id": d.name,
             "name": job.name if job else d.name,

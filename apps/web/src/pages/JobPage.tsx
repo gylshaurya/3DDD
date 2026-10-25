@@ -292,7 +292,7 @@ function Metrics({ s }: { s: JobStreamState }) {
   const isLocal = s.job?.backend === 'local';
   return (
     <div className="metrics">
-      <div className="eyebrow">{isLocal ? 'Brush · this Mac' : `Modal · ${s.job?.gpu ?? ''}`}</div>
+      <div className="eyebrow">{isLocal ? 'Brush · this computer' : `Modal · ${s.job?.gpu ?? ''}`}</div>
       <Stat
         label="Step"
         value={p ? `${p.step.toLocaleString()}` : '—'}

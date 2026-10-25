@@ -113,9 +113,9 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
               aria-pressed={backend === 'local'}
               onClick={() => setBackend('local')}
               disabled={!localAvailable}
-              title={localAvailable ? 'Train offline on this Mac with Brush' : 'Brush is not installed'}
+              title={localAvailable ? 'Train offline on this computer\'s GPU with Brush' : 'Brush is not installed: run uv run python -m threeddd.setup_tools'}
             >
-              This Mac
+              This computer
             </button>
           </div>
         </div>

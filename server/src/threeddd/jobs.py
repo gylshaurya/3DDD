@@ -74,7 +74,7 @@ class JobManager:
     def _load_existing(self) -> None:
         for jf in sorted(JOBS_DIR.glob("*/job.json")):
             try:
-                job = Job(**json.loads(jf.read_text()))
+                job = Job(**json.loads(jf.read_text(encoding="utf-8")))
             except (TypeError, json.JSONDecodeError):
                 continue
             if job.status in ("queued", "running"):
@@ -88,7 +88,7 @@ class JobManager:
 
     def _save(self, job: Job) -> None:
         with self._lock:
-            (job.dir / "job.json").write_text(json.dumps(job.public(), indent=2))
+            (job.dir / "job.json").write_text(json.dumps(job.public(), indent=2), encoding="utf-8")
 
     def snapshot(self, job: Job) -> dict:
         """A consistent copy of a job for API readers (the worker mutates nested dicts)."""
@@ -100,7 +100,7 @@ class JobManager:
         event = {"t": round(time.time(), 3), **event}
         with self._lock:
             self.history.setdefault(job.id, []).append(event)
-            with (job.dir / "events.jsonl").open("a") as f:
+            with (job.dir / "events.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(event) + "\n")
             subs = list(self.subscribers.get(job.id, ()))
         if self.loop:
@@ -239,7 +239,7 @@ class JobManager:
         flag = self.cancel_flags.setdefault(job.id, threading.Event())
         stats = solve_poses_subprocess(d / "frames", d / "sfm", self._progress_cb(job), flag.is_set)
         info = scene_info(d / "sfm" / "sfm_preview.json")
-        (d / "scene.json").write_text(json.dumps(info))
+        (d / "scene.json").write_text(json.dumps(info), encoding="utf-8")
         (d / "sfm_preview.splat").write_bytes(sfm_preview_splat(d / "sfm" / "sfm_preview.json"))
         with self._lock:
             job.metrics["sfm"] = asdict(stats)
@@ -368,7 +368,7 @@ def _read_events(path: Path) -> list[dict]:
     if not path.exists():
         return []
     out = []
-    for line in path.read_text(errors="replace").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError:

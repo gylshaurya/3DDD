@@ -37,7 +37,7 @@ def probe(video: Path) -> VideoInfo:
             "-show_entries", "stream=width,height,avg_frame_rate,duration:stream_side_data=rotation:format=duration",
             "-of", "json", str(video),
         ],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout
     meta = json.loads(out)
     s = meta["streams"][0]
@@ -103,7 +103,7 @@ def extract_frames(
             "-vf", f"fps={sample_fps:.4f},{scale}",
             "-q:v", "2", "-progress", "pipe:1", str(cand_dir / "c_%05d.jpg"),
         ],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
     )
     assert proc.stdout is not None
     finished = False
