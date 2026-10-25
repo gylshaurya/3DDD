@@ -19,9 +19,14 @@ export function BudgetBadge() {
   const [b, setB] = useState<Budget | null>(null);
   useEffect(() => {
     let alive = true;
-    const tick = () => api.budget().then((x) => alive && setB(x), () => {});
-    tick();
-    const id = setInterval(tick, 30000);
+    let id: ReturnType<typeof setInterval> | undefined;
+    // Spend is an operator concern: hidden on the hosted site.
+    api.health().then((h) => {
+      if (h.public || !alive) return;
+      const tick = () => api.budget().then((x) => alive && setB(x), () => {});
+      void tick();
+      id = setInterval(tick, 30000);
+    }, () => {});
     return () => {
       alive = false;
       clearInterval(id);

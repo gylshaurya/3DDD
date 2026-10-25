@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stat, TopBar } from '../components/Chrome';
-import { frameScene } from '../components/SceneCanvas';
+import { frameScene, loadProgressive } from '../components/SceneCanvas';
 import { Sparkline } from '../components/Sparkline';
 import { SplatViewer } from '../components/SplatViewer';
-import { api, formatSeconds, STAGES, type Stage } from '../lib/api';
+import { api, formatSeconds, ownerToken, STAGES, type Stage } from '../lib/api';
 import { useJobReplay, useJobStream, type JobStreamState } from '../lib/useJobStream';
 import type { Viewer, ViewerStats } from '../viewer';
 
@@ -27,6 +27,12 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
   const [showing, setShowing] = useState<Showing>('none');
   const [orbit, setOrbit] = useState(true);
   const [stats, setStats] = useState<ViewerStats | null>(null);
+  const [fullProgress, setFullProgress] = useState<number | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
+  useEffect(() => {
+    // Hosted mode: only the uploader (who holds the owner token) can cancel.
+    api.health().then((h) => setCanCancel(!h.public || !!ownerToken(id)), () => {});
+  }, [id]);
   const shownStep = useRef(0);
   const showingRef = useRef<Showing>('none');
   showingRef.current = showing;
@@ -90,7 +96,8 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
     const v = viewer.current;
     if (!ready || !v || !s.live || !s.final || showing === 'final') return;
     if (showing === 'none') frameScene(v, meta);
-    void v.load(s.final.ply, { keepCamera: true });
+    // Compact version instantly, then the full-colour scene once it has downloaded.
+    void loadProgressive(v, s.final.splat, s.final.ply, setFullProgress).catch(() => {});
     setShowing('final');
   }, [ready, s.live, s.final, showing, meta]);
 
@@ -133,7 +140,7 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
         <Timeline s={s} replay={replay} />
         <Console s={s} />
         <div className="side-actions">
-          {running && !replay && (
+          {running && !replay && canCancel && (
             <button className="btn small" onClick={() => void api.cancel(id)}>
               Cancel run
             </button>
@@ -176,6 +183,9 @@ function JobView({ id, s, replay = false, onRestart }: { id: string; s: JobStrea
           <button className={`btn small ${orbit ? 'on' : ''}`} onClick={() => setOrbit((o) => !o)}>
             Auto-orbit
           </button>
+          {fullProgress !== null && fullProgress < 1 && (
+            <span className="mono faint hud">full-quality colour {Math.round(fullProgress * 100)}%</span>
+          )}
           {stats && (
             <span className="mono faint hud">
               {stats.fps.toFixed(0)} fps · {stats.splatCount.toLocaleString()} splats · sort{' '}

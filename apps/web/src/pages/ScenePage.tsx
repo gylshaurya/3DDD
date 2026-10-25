@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stat, TopBar } from '../components/Chrome';
 import { frameScene, SceneCanvas } from '../components/SceneCanvas';
-import { api, formatSeconds, type SceneSummary } from '../lib/api';
+import { api, formatSeconds, ownerToken, type SceneSummary } from '../lib/api';
 import type { Viewer, ViewerStats } from '../viewer';
 
 export function ScenePage({ id }: { id: string }) {
@@ -14,11 +14,14 @@ export function ScenePage({ id }: { id: string }) {
   const [recording, setRecording] = useState<number | null>(null);
   const [info, setInfo] = useState(true);
   const [splatScale, setSplatScale] = useState(1);
+  const [full, setFull] = useState<number | null>(null);
+  const [isPublic, setIsPublic] = useState(false);
   const viewer = useRef<Viewer | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.scenes().then((all) => {
+    api.health().then((h) => setIsPublic(h.public), () => {});
+    api.scenes([id]).then((all) => {
       const s = all.find((x) => x.id === id);
       if (s) setScene(s);
       else setMissing(true);
@@ -87,7 +90,9 @@ export function ScenePage({ id }: { id: string }) {
     <div className="scene-page" ref={wrap}>
       <SceneCanvas
         className="stage-canvas"
-        src={scene ? scene.ply : null}
+        src={scene ? scene.splat : null}
+        fullSrc={scene?.ply ?? null}
+        onFullProgress={setFull}
         meta={scene?.scene}
         onReady={(v) => {
           viewer.current = v;
@@ -155,20 +160,25 @@ export function ScenePage({ id }: { id: string }) {
               Download .ply
             </a>
           )}
-          <button
-            className="btn small ghost"
-            onClick={() => {
-              if (scene && confirm(`Delete “${scene.name}” permanently?`)) void api.remove(scene.id).then(() => location.assign('/#/'));
-            }}
-          >
-            Delete
-          </button>
+          {scene && (!isPublic || (!scene.featured && ownerToken(scene.id))) && (
+            <button
+              className="btn small ghost"
+              onClick={() => {
+                if (confirm(`Delete “${scene.name}” permanently?`)) void api.remove(scene.id).then(() => location.assign('/#/'));
+              }}
+            >
+              Delete
+            </button>
+          )}
           {!info && (
             <button className="btn small" onClick={() => setInfo(true)}>
               Details
             </button>
           )}
         </div>
+        {full !== null && full < 1 && (
+          <div className="mono faint hud">Loading full-quality colour… {Math.round(full * 100)}%</div>
+        )}
         {stats && (
           <div className="mono faint hud">
             {stats.fps.toFixed(0)} fps · {stats.splatCount.toLocaleString()} splats · {stats.visibleCount.toLocaleString()} visible · GPU radix sort{' '}

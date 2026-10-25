@@ -843,3 +843,17 @@
   width: 34px;
   text-align: right;
 }
+.mine-head {
+  margin-top: 40px;
+}
+.limits {
+  font-size: 12px;
+  margin-top: -6px;
+}
+.hero-poster {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat;
+  filter: blur(24px) brightness(0.5);
+  transform: scale(1.1);
+}

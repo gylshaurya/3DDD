@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, createJob, GPUS, type Backend, type Preset } from '../lib/api';
+import { api, createJob, GPUS, type Backend, type Health, type Preset } from '../lib/api';
 import { navigate } from '../lib/router';
 import { QrCode } from './Chrome';
 
@@ -21,7 +21,7 @@ const PRESETS: { id: Preset; label: string }[] = [
   { id: 'quality', label: 'Quality' },
 ];
 
-export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
+export function NewCapture({ localAvailable, health }: { localAvailable: boolean; health: Health | null }) {
   const [backend, setBackend] = useState<Backend>('modal');
   const [preset, setPreset] = useState<Preset>('fast');
   const [gpu, setGpu] = useState('L40S');
@@ -34,8 +34,16 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
 
   useEffect(() => {
     api.samples().then((s) => setSamples(s.map((x) => x.name)), () => {});
-    api.lan().then((l) => setLan(l.url), () => {});
   }, []);
+  useEffect(() => {
+    if (!health) return;
+    // Hosted: phones open the public site directly; locally: the laptop's Wi-Fi address.
+    if (health.public) setLan(`${location.origin}/capture`);
+    else api.lan().then((l) => setLan(l.url), () => {});
+  }, [health]);
+  const limits = health?.limits ?? null;
+  const presets = limits ? PRESETS.filter((p) => limits.presets.includes(p.id)) : PRESETS;
+  const gpus = limits ? GPUS.filter((g) => limits.gpus.includes(g.id)) : GPUS;
 
   const trainS = TRAIN_S[backend][preset][backend === 'modal' ? gpu : 'mac'];
   const cost = backend === 'modal' ? ((RATE[gpu] + 0.45) * (trainS + 40)) / 3600 : 0;
@@ -103,6 +111,7 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
       </div>
 
       <div className="opts">
+        {!health?.public && (
         <div className="opt-row">
           <span className="opt-label">Train on</span>
           <div className="seg">
@@ -119,10 +128,11 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
             </button>
           </div>
         </div>
+        )}
         <div className="opt-row">
           <span className="opt-label">Quality</span>
           <div className="seg">
-            {PRESETS.map((p) => (
+            {presets.map((p) => (
               <button key={p.id} aria-pressed={preset === p.id} onClick={() => setPreset(p.id)}>
                 {p.label}
               </button>
@@ -133,7 +143,7 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
           <div className="opt-row">
             <span className="opt-label">GPU</span>
             <div className="seg">
-              {GPUS.map((g) => (
+              {gpus.map((g) => (
                 <button key={g.id} aria-pressed={gpu === g.id} onClick={() => setGpu(g.id)} title={g.note}>
                   {g.label}
                 </button>
@@ -147,6 +157,12 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
         </div>
       </div>
 
+      {limits && (
+        <div className="limits faint">
+          Free hosted demo: videos up to {limits.max_video_seconds} s / {limits.max_upload_mb} MB,{' '}
+          {limits.jobs_per_ip_per_hour} captures per hour.
+        </div>
+      )}
       {error && <div className="error-line">{error}</div>}
 
       <div className="capture-foot">
@@ -155,7 +171,11 @@ export function NewCapture({ localAvailable }: { localAvailable: boolean }) {
             <QrCode text={lan} size={84} />
             <div>
               <div className="phone-title">Film it on your phone</div>
-              <div className="faint phone-sub">Scan on the same Wi-Fi to record and upload straight from the camera.</div>
+              <div className="faint phone-sub">
+                {health?.public
+                  ? 'Scan to record and upload straight from your phone camera.'
+                  : 'Scan on the same Wi-Fi to record and upload straight from the camera.'}
+              </div>
             </div>
           </div>
         )}

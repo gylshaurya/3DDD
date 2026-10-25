@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react';
-import type { Job, JobEvent, SceneMeta, SfmStats, Stage, TrainProgress } from './api';
+import { u, type Job, type JobEvent, type SceneMeta, type SfmStats, type Stage, type TrainProgress } from './api';
 
 export interface LogLine {
   t: number;
@@ -30,6 +30,23 @@ const initial: JobStreamState = {
   job: null, live: false, logs: [], stageMsg: {}, stageProgress: {}, progress: null, curve: [], thumb: null, frames: null,
   sfm: null, snapshot: null, snapshotCount: 0, compares: [], final: null, connectionLost: false,
 };
+
+/** Server events carry server-relative file paths; resolve them against the API origin. */
+function resolveUrls(ev: JobEvent): JobEvent {
+  switch (ev.type) {
+    case 'thumb':
+    case 'sfm':
+    case 'snapshot':
+    case 'compare':
+      return { ...ev, url: u(ev.url) };
+    case 'frames':
+      return { ...ev, urls: ev.urls.map(u) };
+    case 'done':
+      return { ...ev, ply: u(ev.ply), splat: u(ev.splat) };
+    default:
+      return ev;
+  }
+}
 
 type Action = { kind: 'event'; ev: JobEvent | { type: 'replay_done' } } | { kind: 'reset' } | { kind: 'lost' };
 
@@ -91,31 +108,40 @@ export function useJobStream(jobId: string | null): JobStreamState {
     dispatch({ kind: 'reset' });
     let es: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let lostToast: ReturnType<typeof setTimeout> | undefined;
     let closed = false;
     let finished = false;
+    let received = 0; // events applied so far; reconnects resume from here (?since=N)
 
     const connect = () => {
-      es = new EventSource(`/api/jobs/${jobId}/events`);
+      es = new EventSource(u(`/api/jobs/${jobId}/events?since=${received}`));
       es.onmessage = (m) => {
         const ev = JSON.parse(m.data as string) as JobEvent | { type: 'replay_done' };
+        if (ev.type === 'replay_done') {
+          clearTimeout(lostToast);
+          dispatch({ kind: 'event', ev });
+          return;
+        }
+        received++;
         if (ev.type === 'job' && ['done', 'failed', 'cancelled'].includes(ev.job.status)) finished = true;
-        dispatch({ kind: 'event', ev });
+        dispatch({ kind: 'event', ev: resolveUrls(ev) });
       };
+      // The server ends each stream after ~100 s (hosting proxies cap request length), and networks
+      // drop; either way, resume exactly where we left off.
       es.onerror = () => {
         es?.close();
         if (closed || finished) return;
-        dispatch({ kind: 'lost' });
-        // A reconnect replays the full history, so start from a clean slate to avoid duplicates.
-        retry = setTimeout(() => {
-          dispatch({ kind: 'reset' });
-          connect();
-        }, 1500);
+        // Routine stream rotation reconnects in under a second; only surface real outages.
+        clearTimeout(lostToast);
+        lostToast = setTimeout(() => dispatch({ kind: 'lost' }), 3000);
+        retry = setTimeout(connect, 800);
       };
     };
     connect();
     return () => {
       closed = true;
       clearTimeout(retry);
+      clearTimeout(lostToast);
       es?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,7 +185,7 @@ export function useJobReplay(jobId: string, seconds = 70, run = 0): JobStreamSta
     let cancelled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
     dispatch({ kind: 'reset' });
-    fetch(`/files/jobs/${jobId}/events.jsonl`)
+    fetch(u(`/files/jobs/${jobId}/events.jsonl`))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('No recording for this run'))))
       .then((text) => {
         const events = text
@@ -169,7 +195,9 @@ export function useJobReplay(jobId: string, seconds = 70, run = 0): JobStreamSta
         if (!events.length || cancelled) return;
         const at = replaySchedule(events, seconds);
         dispatch({ kind: 'event', ev: { type: 'replay_done' } });
-        events.forEach((ev, i) => timers.push(setTimeout(() => !cancelled && dispatch({ kind: 'event', ev }), at[i] * 1000)));
+        events.forEach((ev, i) =>
+          timers.push(setTimeout(() => !cancelled && dispatch({ kind: 'event', ev: resolveUrls(ev) }), at[i] * 1000)),
+        );
       })
       .catch(() => dispatch({ kind: 'lost' }));
     return () => {

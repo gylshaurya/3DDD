@@ -2,22 +2,30 @@ import { useEffect, useState } from 'react';
 import { TopBar } from '../components/Chrome';
 import { NewCapture } from '../components/NewCapture';
 import { SceneCanvas } from '../components/SceneCanvas';
-import { api, formatSeconds, type Job, type SceneSummary } from '../lib/api';
+import { api, formatSeconds, myJobs, type Health, type Job, type SceneSummary } from '../lib/api';
 
 export function Home() {
   const [scenes, setScenes] = useState<SceneSummary[]>([]);
+  const [mine, setMine] = useState<SceneSummary[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [localAvailable, setLocalAvailable] = useState(false);
+  const [health, setHealth] = useState<Health | null>(null);
   const [heroReady, setHeroReady] = useState(false);
 
   useEffect(() => {
-    api.scenes().then(setScenes, () => {});
-    api.health().then((h) => setLocalAvailable(h.local_trainer), () => {});
-    const tick = () => api.jobs().then(setJobs, () => {});
-    tick();
-    const id = setInterval(tick, 4000);
+    let id: ReturnType<typeof setInterval> | undefined;
+    api.health().then((h) => {
+      setHealth(h);
+      // Hosted: the gallery is the featured scenes; your own uploads are tracked in this browser.
+      const ids = h.public ? myJobs().map((j) => j.id) : undefined;
+      api.scenes().then(setScenes, () => {});
+      if (ids?.length) api.scenes(ids).then((s) => setMine(s.filter((x) => !x.featured)), () => {});
+      const tick = () => (ids && !ids.length ? Promise.resolve() : api.jobs(ids).then(setJobs, () => {}));
+      void tick();
+      id = setInterval(tick, 4000);
+    }, () => {});
     return () => clearInterval(id);
   }, []);
+  const localAvailable = !!health?.local_trainer;
 
   // Feature the best-looking capture: highest PSNR on held-out views, else the newest.
   const hero = scenes.reduce<SceneSummary | undefined>(
@@ -29,6 +37,7 @@ export function Home() {
   return (
     <div className="home">
       <section className="hero">
+        {hero && !heroReady && <div className="hero-poster" style={{ backgroundImage: `url(${hero.thumb})` }} />}
         {hero && (
           <SceneCanvas
             className={`hero-canvas ${heroReady ? 'ready' : ''}`}
@@ -68,7 +77,7 @@ export function Home() {
               </div>
             )}
           </div>
-          <NewCapture localAvailable={localAvailable} />
+          <NewCapture localAvailable={localAvailable} health={health} />
         </div>
         {hero && (
           <a className="hero-caption" href={`#/scene/${hero.id}`}>
@@ -103,6 +112,28 @@ export function Home() {
               </a>
             ))}
           </div>
+        )}
+        {mine.length > 0 && (
+          <>
+            <div className="section-head mine-head">
+              <h2>Your captures</h2>
+              <span className="faint">only visible to you, via their links</span>
+            </div>
+            <div className="gallery">
+              {mine.map((s) => (
+                <a key={s.id} className="card" href={`#/scene/${s.id}`}>
+                  <div className="card-img" style={{ backgroundImage: `url(${s.thumb})` }} />
+                  <div className="card-body">
+                    <div className="card-title">{s.name}</div>
+                    <div className="card-meta mono faint">
+                      {s.metrics.train?.test_psnr ? `${s.metrics.train.test_psnr.toFixed(1)} dB` : ''}
+                      {s.metrics.total_seconds ? ` · ${formatSeconds(s.metrics.total_seconds)}` : ''}
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </>
         )}
         <RecentJobs jobs={jobs.filter((j) => j.status === 'failed' || j.status === 'cancelled')} />
       </section>

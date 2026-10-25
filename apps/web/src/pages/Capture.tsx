@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Logo } from '../components/Chrome';
-import { createJob, type Preset } from '../lib/api';
+import { api, createJob, type Preset } from '../lib/api';
 
 /** Phone-first page reached via the QR code: record → upload → watch it train. */
 export function Capture() {
@@ -8,6 +8,10 @@ export function Capture() {
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset>('fast');
+  const [presets, setPresets] = useState<Preset[]>(['preview', 'fast', 'quality']);
+  useEffect(() => {
+    api.health().then((h) => h.limits && setPresets(h.limits.presets), () => {});
+  }, []);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -32,7 +36,7 @@ export function Capture() {
         <li>Keep it steady and well lit. 20–60 seconds is plenty.</li>
       </ol>
       <div className="seg">
-        {(['preview', 'fast', 'quality'] as Preset[]).map((p) => (
+        {presets.map((p) => (
           <button key={p} aria-pressed={preset === p} onClick={() => setPreset(p)}>
             {p[0].toUpperCase() + p.slice(1)}
           </button>
